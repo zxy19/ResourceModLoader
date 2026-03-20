@@ -54,7 +54,7 @@ namespace ResourceModLoader
         }
         public static void Wait()
         {
-            WriteLine("按任意键退出程序");
+            WriteLine("按任意键继续");
             Console.ReadKey();
         }
         public static void Info(string t)

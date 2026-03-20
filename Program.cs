@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Reflection.Metadata;
 using AddressablesTools;
 using AddressablesTools.Binary;
@@ -29,6 +31,9 @@ namespace ResourceModLoader
                 Log.Wait();
                 return;
             }
+
+            TryCopy();
+            scan.Scan();
             ProcessMods();
             ApplyAll();
             addressableMgr.Save();
@@ -42,13 +47,8 @@ namespace ResourceModLoader
         }
         static void ProcessMods()
         {
-            Log.Info("扫描Mods");
             string modsDirectory = Path.Combine(basePath, "mods");
-
-            if (!Directory.Exists(modsDirectory))
-            {
-                Directory.CreateDirectory(modsDirectory);
-            }
+            Log.Info("扫描Mods");
             Log.SetupProgress(-1);
             ApplyMod(modsDirectory, 100);
             Log.FinalizeProgress("搜索结束");
@@ -58,10 +58,81 @@ namespace ResourceModLoader
         static BundleScan scan;
         static AddressableMgr addressableMgr;
         static ModContext modContext;
+        static string DiscoverGameDir(string user)
+        {
+            string currentPath = Directory.GetCurrentDirectory();
+
+            if (Path.Exists(Path.Combine(currentPath, "possible_names.txt")))
+            {
+                const string DETECT_STR = "[Subsystems] Discovering subsystems at path ";
+                var possibleNames = File.ReadAllText(Path.Combine(currentPath, "possible_names.txt")).Split("\n");
+                foreach (var possibleName in possibleNames)
+                {
+                    var detectPath = Path.Combine(possibleName.Trim().Replace("{User}", user), "Player.log");
+                    if (File.Exists(detectPath))
+                    {
+                        var unityLog = File.ReadAllText(detectPath);
+                        var sp = unityLog.IndexOf(DETECT_STR);
+                        if (sp >= 0)
+                        {
+                            sp += DETECT_STR.Length;
+                            var ep = unityLog.IndexOf("\n", sp);
+                            var path = unityLog.Substring(sp, ep - sp);
+                            path = Path.GetDirectoryName(Path.GetDirectoryName(path));
+                            return path;
+                        }
+                    }
+                }
+            }
+            return currentPath;
+        }
+        static void TryCopy()
+        {
+            string currentPath = Directory.GetCurrentDirectory();
+
+            if (Path.Exists(Path.Combine(currentPath, "copies.txt")))
+            {
+                string self = Process.GetCurrentProcess().MainModule.FileName;
+                if (!Path.Exists(Path.Combine(basePath, Path.GetFileName(self))))
+                {
+                    File.Copy(self, Path.Combine(basePath, Path.GetFileName(self)));
+                    Log.Info("已将本程序拷贝到 " + Path.Combine(basePath, Path.GetFileName(self)));
+                    Log.Info("将来如果要撤销该程序的影响，请到该目录下删除mods文件夹后再次运行目录下的该程序");
+                    Log.Info("即将复制文件并修补游戏文件，如果你已经了解，请按下回车键来继续操作");
+                    Log.Wait();
+                }
+                string modsDirectory = Path.Combine(basePath, "mods");
+                var copyItems = File.ReadAllText(Path.Combine(currentPath, "copies.txt")).Split("\n");
+                foreach (var copyItem in copyItems)
+                {
+                    var p = Path.Combine(currentPath, copyItem.Trim());
+                    var target = Path.Combine(modsDirectory, copyItem.Trim());
+                    var dir = Path.GetDirectoryName(target);
+                    if(!Path.Exists(dir))
+                        Directory.CreateDirectory(dir);
+                    if (File.Exists(p)) 
+                    {
+                        File.Copy(p, target,true);
+                        Log.SuccessAll($"已复制文件 {target}");
+                    }
+                    else if (Directory.Exists(p))
+                    {
+                        if(Directory.Exists(target))
+                            Directory.Delete(target,true);
+                        Util.CopyDirectory(p, target,true);
+                        Log.SuccessAll($"已复制目录 {target}");
+                    }
+                    else
+                    {
+                        Log.Warn($"要拷贝的文件{p}不存在");
+                    }
+                }
+            }
+        }
         static void Init()
         {
             string localPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "LocalLow");
-            string currentPath = Directory.GetCurrentDirectory();
+            string currentPath = DiscoverGameDir(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
             string appName = "";
             for (int i = 0; i < 2; i++)
             {
@@ -108,6 +179,13 @@ namespace ResourceModLoader
             addressableMgr.Add(Path.Combine(currentPath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle"));
             scan = new BundleScan(addressableMgr, Path.Combine(currentPath, appName + "_Data"), Path.Combine(presistDir, "AssetBundles"));
             modContext = new ModContext(addressableMgr, scan);
+
+            string modsDirectory = Path.Combine(basePath, "mods");
+
+            if (!Directory.Exists(modsDirectory))
+            {
+                Directory.CreateDirectory(modsDirectory);
+            }
         }
         static void ApplyMod(string modPath, int priority)
         {

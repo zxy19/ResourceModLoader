@@ -28,7 +28,9 @@ namespace ResourceModLoader.Module
             this.ccd = ccd;
             this.local = local;
             this.cache = cache;
-
+        }
+        public void Scan()
+        {
             Log.Info("正在为缓存目录构建临时索引");
             var dirs = Directory.GetDirectories(cache);
             Log.SetupProgress(dirs.Length);
