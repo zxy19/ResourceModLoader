@@ -6,8 +6,11 @@ using AddressablesTools.Binary;
 using AddressablesTools.Catalog;
 using AddressablesTools.Classes;
 using AddressablesTools.JSON;
+using ResourceModLoader.Module;
+using ResourceModLoader.util;
+using ResourceModLoader.Utils;
 
-namespace ResourceModLoader
+namespace ResourceModLoader.Log
 {
     class Program
     {
@@ -28,6 +31,7 @@ namespace ResourceModLoader
             ProcessMods();
             ApplyAll();
             addressableMgr.Save();
+            Report.Print(Path.Combine(basePath, "mods"));
             Log.Wait();
         }
         static void StartGame()
@@ -43,16 +47,16 @@ namespace ResourceModLoader
             {
                 Directory.CreateDirectory(modsDirectory);
             }
-            ApplyMod(modsDirectory,100);
+            ApplyMod(modsDirectory, 100);
         }
         static string basePath = "";
         static string executable = "";
         static BundleScan scan;
         static AddressableMgr addressableMgr;
-        static List<Tuple<int,string, string, string,string>> collected = new List<Tuple<int, string,string, string, string>>();
+        static List<Tuple<int, string, string, string, string>> collected = new List<Tuple<int, string, string, string, string>>();
         static void Init()
         {
-            string localPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "LocalLow"); 
+            string localPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "LocalLow");
             string currentPath = Directory.GetCurrentDirectory();
             string appName = "";
             for (int i = 0; i < 2; i++)
@@ -65,13 +69,13 @@ namespace ResourceModLoader
                         appName = subDir.Substring(0, subDir.Length - 5);
                     }
                 }
-                if(appName != "")
+                if (appName != "")
                 {
                     break;
                 }
                 currentPath = Directory.GetParent(currentPath).FullName;
             }
-            if(appName == "")
+            if (appName == "")
             {
                 Log.Error("在游戏运行目录下安装该软件");
                 return;
@@ -79,8 +83,9 @@ namespace ResourceModLoader
             basePath = currentPath;
             executable = Path.Combine(currentPath, appName + ".exe");
             Log.Debug($"使用 {executable} 作为可执行文件");
-            string[] appData = File.ReadAllLines(Path.Combine(currentPath, appName+"_Data","app.info"));
-            if(appData.Length < 2) {
+            string[] appData = File.ReadAllLines(Path.Combine(currentPath, appName + "_Data", "app.info"));
+            if (appData.Length < 2)
+            {
                 Log.Error("Appinfo 不合法");
                 return;
             }
@@ -89,8 +94,8 @@ namespace ResourceModLoader
 
 
             string addressableSettings = File.ReadAllText(Path.Combine(currentPath, appName + "_Data", "StreamingAssets", "aa", "settings.json"));
-            int offset1 = addressableSettings.IndexOf("/catalog_")+9;
-            int offset2 = addressableSettings.IndexOf(".hash",offset1);
+            int offset1 = addressableSettings.IndexOf("/catalog_") + 9;
+            int offset2 = addressableSettings.IndexOf(".hash", offset1);
             string version = addressableSettings.Substring(offset1, offset2 - offset1);
             Log.Debug($"Game Version {version}");
 
@@ -99,7 +104,7 @@ namespace ResourceModLoader
             addressableMgr.Add(Path.Combine(currentPath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle"));
             scan = new BundleScan(addressableMgr, Path.Combine(currentPath, appName + "_Data"), Path.Combine(presistDir, "AssetBundles"));
         }
-        static void ApplyMod(string modPath,int priority)
+        static void ApplyMod(string modPath, int priority)
         {
             bool performCommonReplace = true;
             if (File.Exists(Path.Combine(modPath, "priority.txt")))
@@ -107,8 +112,9 @@ namespace ResourceModLoader
             if (File.Exists(Path.Combine(modPath, "优先级.txt")))
                 try { priority = int.Parse(File.ReadAllText(Path.Combine(modPath, "优先级.txt"))); } catch (Exception _) { }
 
-            if (File.Exists(Path.Combine(modPath, "replace.txt"))) 
+            if (File.Exists(Path.Combine(modPath, "replace.txt")))
             {
+                Report.AddModFile(Path.Combine(modPath, "replace.txt"));
                 performCommonReplace = false;
                 string[] files = File.ReadAllLines(Path.Combine(modPath, "replace.txt"));
                 foreach (string file in files)
@@ -122,39 +128,48 @@ namespace ResourceModLoader
                     string bundle = def[1];
                     string req = def.Length < 3 ? def[1] : def[2];
                     string bundleFile = Path.Combine(modPath, bundle);
-                    CollectApplyBundleMod(name, bundleFile,"",req,priority);
+                    Report.AddModFile(bundleFile);
+                    Report.AddTaintFile(Path.Combine(modPath, "replace.txt"), name);
+                    CollectApplyBundleMod(name, bundleFile, "", req, priority);
                 }
             }
-            var filesAll = Directory.GetFiles(modPath);
-            Array.Sort(filesAll);
-            foreach (var file in filesAll)
+            else
             {
-                if (Path.GetExtension(file).ToLower() == ".png" || Path.GetExtension(file).ToLower() == ".jpg" || Path.GetExtension(file).ToLower() == ".gif")
+                var filesAll = Directory.GetFiles(modPath);
+                Array.Sort(filesAll);
+                foreach (var file in filesAll)
                 {
-                    if (addressableMgr.IsAddressableName(Path.GetFileNameWithoutExtension(file)))
+                    if (Path.GetExtension(file).ToLower() == ".png" || Path.GetExtension(file).ToLower() == ".jpg" || Path.GetExtension(file).ToLower() == ".gif")
                     {
-                        string bundle = AB.createImageAbSingle(file);
-                        if (bundle != "")
-                            CollectApplyBundleMod(Path.GetFileNameWithoutExtension(file), bundle, "d","", priority);
+                        Report.AddModFile(file);
+                        if (addressableMgr.IsAddressableName(Path.GetFileNameWithoutExtension(file)))
+                        {
+                            string bundle = AB.createImageAbSingle(file);
+                            if (bundle != "")
+                            {
+                                CollectApplyBundleMod(Path.GetFileNameWithoutExtension(file), bundle, "d", "", priority);
+                            }
+                            else
+                            {
+                                Report.Error(file, "图片bundle创建失败");
+                            }
+                        }
                     }
-                }
-                if((Path.GetExtension(file).ToLower() == ".bundle"  || Path.GetFileName(file)== "__data") && performCommonReplace)
-                {
-                    var list = scan.CalculateToReplaceItems(file);
-                    if(list.Item1 == "UNK")
+                    if ((Path.GetExtension(file).ToLower() == ".bundle" || Path.GetFileName(file) == "__data") && performCommonReplace)
                     {
-                        Log.Warn($"{file} 无法对应到游戏中任何一个资产文件，它可能是一个过期资产。将尝试加载并重定向所有文件，如果游戏异常，优先考虑删除这个文件");
+                        Report.AddModFile(file);
+                        var list = scan.CalculateToReplaceItems(file);
+                        foreach (var item in list.Item2)
+                        {
+                            CollectApplyBundleMod(item.Item1, file, item.Item2, list.Item1, priority);
+                        }
                     }
-                    foreach(var item in list.Item2)
+                    if (Path.GetExtension(file).ToLower() == ".zip")
                     {
-                        CollectApplyBundleMod(item, file, "" , list.Item1, priority);
+                        string tp = Zip.ExtractAndGetPath(file);
+                        if (tp != "")
+                            ApplyMod(tp, priority);
                     }
-                }
-                if (Path.GetExtension(file).ToLower() == ".zip")
-                {
-                    string tp = Zip.ExtractAndGetPath(file);
-                    if(tp != "")
-                        ApplyMod(tp,priority);
                 }
             }
             var dirs = Directory.GetDirectories(modPath);
@@ -162,13 +177,13 @@ namespace ResourceModLoader
             foreach (var dir in dirs)
             {
                 var dirName = Path.GetFileName(dir);
-                if(dirName != "_generated")
+                if (dirName != "_generated")
                 {
-                    ApplyMod(Path.Combine(modPath,dir), priority);
+                    ApplyMod(Path.Combine(modPath, dir), priority);
                 }
             }
         }
-        static void CollectApplyBundleMod(string name, string bundleFile,string containerRedir= "",string depReq = "",int priority=100)
+        static void CollectApplyBundleMod(string name, string bundleFile, string containerRedir = "", string depReq = "", int priority = 100)
         {
             var t = new Tuple<int, string, string, string, string>(priority, name, bundleFile, containerRedir, depReq);
             if (!collected.Contains(t))
@@ -176,20 +191,59 @@ namespace ResourceModLoader
                 collected.Add(t);
             }
         }
-        static void SortAndFilter()
+        static void MergeAndPatchBundles()
         {
-            collected.Sort((a, b) => a.Item1 - b.Item1);
-            
-            for(int i = 0; i < collected.Count; i++)
+            List<Tuple<string, string>> merged = new List<Tuple<string, string>>();
+            for (int i = 0; i < collected.Count; i++)
             {
-                List<int> sameId = new List<int> { i};
-                for(int j=i+1; j < collected.Count; j++)
+                var (p, name, file, ctr, req) = collected[i];
+
+                if (name.EndsWith(".bundle"))
+                {
+                    Report.AddTaintFile(file, name);
+                    var bundlePath = scan.GetBundleLocalPath(name);
+                    if (bundlePath == "")
+                        continue;
+                    Log.Debug($"合并修补 ->{name}");
+                    Log.Debug($"  | - {file}");
+
+                    collected.RemoveAt(i);
+                    i--;
+                    List<string> files = new List<string> { file };
+                    for (int j = i + 1; j < collected.Count; j++)
+                    {
+                        if (collected[j].Item2 == name)
+                        {
+                            Report.AddTaintFile(collected[j].Item3, collected[j].Item2);
+                            Log.Debug($"  | - {collected[j].Item3}");
+                            files.Add(collected[j].Item3);
+                            collected.RemoveAt(j);
+                            j--;
+                        }
+                    }
+                    if (!Path.Exists(Path.Combine(basePath, "_generated")))
+                        Directory.CreateDirectory(Path.Combine(basePath, "_generated"));
+                    AB.MergeBundles(bundlePath, files, Path.Combine(basePath, "_generated", name));
+                    merged.Add(new Tuple<string, string>(name, Path.Combine(basePath, "_generated", name)));
+                }
+            }
+            foreach (var (name, file) in merged)
+            {
+                collected.Add(new Tuple<int, string, string, string, string>(10000, name, file, "", ""));
+            }
+        }
+        static void FilterPatches()
+        {
+            for (int i = 0; i < collected.Count; i++)
+            {
+                List<int> sameId = new List<int> { i };
+                for (int j = i + 1; j < collected.Count; j++)
                 {
                     if (collected[j].Item2 != collected[i].Item2 || collected[j].Item5 != collected[i].Item5) continue;
                     if (collected[j].Item1 > collected[i].Item1)
                     {
                         collected.RemoveAt(j);
-                        j --;
+                        j--;
                         continue;
                     }
                     sameId.Add(j);
@@ -197,7 +251,7 @@ namespace ResourceModLoader
                 if (sameId.Count > 1)
                 {
                     Log.Debug($"{collected[i].Item2} 有 {sameId.Count} 个优先级相同的备选项");
-                    foreach(int id in sameId)
+                    foreach (int id in sameId)
                     {
                         Log.Debug($" |-> {collected[id].Item3}");
                     }
@@ -219,6 +273,7 @@ namespace ResourceModLoader
                         }
                         if (maxEq > 0)
                         {
+                            Report.Warning(collected[sameId[maxId]].Item3, "项目来自多个同名项目的自动选择");
                             Log.Info($" --> 使用 {collected[sameId[maxId]].Item3}来执行重定向");
                             for (int ii = sameId.Count - 1; ii >= 0; ii--)
                             {
@@ -231,17 +286,23 @@ namespace ResourceModLoader
         }
         static void ApplyAll()
         {
-            SortAndFilter();
+            collected.Sort((a, b) => a.Item1 - b.Item1);
+            MergeAndPatchBundles();
+            FilterPatches();
+
             Dictionary<string, string> applied = new Dictionary<string, string>();
-            foreach(var item in collected)
+            foreach (var item in collected)
             {
                 Log.Debug($"重定向 {item.Item2} -> {item.Item3}");
                 if (applied.ContainsKey(item.Item2))
                 {
                     Log.Warn($"{item.Item2} 正在被多次patch。上次重定向到 {applied[item.Item2]}");
+                    Report.Error(applied[item.Item2], $"曾经被应用，但是被 {item.Item3} 覆盖");
                 }
                 applied[item.Item2] = item.Item3;
-                addressableMgr.ApplyBundleMod(item.Item2, item.Item3,item.Item4,item.Item5);
+                if (!item.Item2.EndsWith(".bundle"))
+                    Report.AddTaintFile(item.Item3, item.Item2);
+                addressableMgr.ApplyBundleMod(item.Item2, item.Item3, item.Item4, item.Item5);
             }
         }
     }

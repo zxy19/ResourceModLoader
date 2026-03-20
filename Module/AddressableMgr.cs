@@ -28,18 +28,23 @@ namespace ResourceModLoader
             {
                 return;
             }
+            string refer = path + ".modded_ref";
             string bak = path + ".modded_bak";
             string genHash= path + ".modded_hash";
             string toload = path;
             bool needBackup = true;
-            if (Path.Exists(bak) && Path.Exists(genHash))
+            if (Path.Exists(refer) && Path.Exists(genHash))
             {
                 string hash = Convert.ToHexString(MD5.HashData(File.ReadAllBytes(path)));
                 string hashBefore = File.ReadAllText(genHash);
                 if(hash == hashBefore) {
-                    toload = bak;
+                    toload = refer;
                     needBackup = false;
                 }
+            }
+            if (!Path.Exists(bak))
+            {
+                File.Copy(path, bak);
             }
             if (path.EndsWith(".bundle"))
             {
@@ -251,20 +256,20 @@ namespace ResourceModLoader
             {
                 ContentCatalogData ccd = contentCatalogDatas[idx];
                 string path = contentCatalogPath[idx];
-                bool needBackup = createBackup[idx];
+                bool needUpdateRef = createBackup[idx];
 
-                string bak = path + ".modded_bak";
+                string refer = path + ".modded_ref";
                 string genHash = path + ".modded_hash";
 
-                if(needBackup)
+                if(needUpdateRef)
                 {
-                    if(File.Exists(bak))
-                        File.Delete(bak);
-                    File.Copy(path, bak);
+                    if(File.Exists(refer))
+                        File.Delete(refer);
+                    File.Copy(path, refer);
                 }
 
                 if (path.EndsWith(".bundle"))
-                    AddressablesCatalogFileParser.ToBundle(ccd, bak, path);
+                    AddressablesCatalogFileParser.ToBundle(ccd, refer, path);
                 else
                     File.WriteAllText(path, AddressablesCatalogFileParser.ToJsonString(ccd));
 
