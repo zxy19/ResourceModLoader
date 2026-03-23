@@ -19,6 +19,7 @@ namespace ResourceModLoader
 {
     class Program
     {
+        static string VERSION = "0.0.7";
         static void Main(string[] args)
         {
 
@@ -50,6 +51,7 @@ namespace ResourceModLoader
                     return;
                 }
             }
+            InstallAndRecordInfo(args);
             TryCopy();
             scan.Scan();
             do
@@ -77,10 +79,6 @@ namespace ResourceModLoader
             {
                 ProtoExportTool.Invoke(remain, addressableMgr, scan);
             }
-        }
-        static void StartGame()
-        {
-            if (executable == "") return;
         }
         static void ProcessMods()
         {
@@ -130,19 +128,6 @@ namespace ResourceModLoader
 
             if (Path.Exists(Path.Combine(currentPath, "copies.txt")))
             {
-                string self = Process.GetCurrentProcess().MainModule.FileName;
-                string dep = Path.Combine(Path.GetDirectoryName(self), "PVRTexLib.dll");
-                if (!Path.Exists(Path.Combine(basePath, Path.GetFileName(self))))
-                {
-                    File.Copy(self, Path.Combine(basePath, Path.GetFileName(self)));
-                    if(Path.Exists(dep))
-                        File.Copy(dep, Path.Combine(basePath, Path.GetFileName(dep)),true);
-
-                    Log.Info("已将本程序拷贝到 " + Path.Combine(basePath, Path.GetFileName(self)));
-                    Log.Info("将来如果要撤销该程序的影响，请到该目录下删除mods文件夹后再次运行目录下的该程序");
-                    Log.Info("即将复制文件并修补游戏文件，如果你已经了解，请按下回车键来继续操作");
-                    Log.Wait();
-                }
                 string modsDirectory = Path.Combine(basePath, "mods");
                 var copyItems = File.ReadAllText(Path.Combine(currentPath, "copies.txt")).Split("\n");
                 foreach (var copyItem in copyItems)
@@ -170,6 +155,87 @@ namespace ResourceModLoader
                     }
                 }
             }
+        }
+        static void InstallAndRecordInfo(string[] args)
+        {
+            int result = -1;
+            string lastInstall = "";
+            bool firstRun = true;
+            if (Path.Exists(Path.Combine(basePath, "rml.info")))
+            {
+                firstRun = false;
+                var infos = (File.ReadAllText(Path.Combine(basePath, "rml.info")) + "\n\n").Split("\n");
+                string tVer = infos[1];
+                lastInstall = infos[2];
+                string[] curVer = VERSION.Split(".");
+                string[] installedVer = tVer.Split(".");
+                result = 0;
+                for (int i = 0; i < curVer.Length + 1 && i < installedVer.Length + 1; i++)
+                {
+                    if (i == curVer.Length || i == installedVer.Length) break;
+                    if (int.Parse(curVer[i]) == int.Parse(installedVer[i])) continue;
+                    if (int.Parse(curVer[i]) < int.Parse(installedVer[i]))
+                        result = -1;
+                    else
+                        result = 1;
+                    break;
+                }
+            }
+            if(lastInstall != "" && !Path.Exists(Path.Combine(basePath, lastInstall)))
+            {
+                Log.Warn("虽然有安装记录，但是没有找到对应的可执行程序。重新安装当前版本");
+                result = 1;
+            }
+            if (result == 0)
+            {
+                Log.Debug("当前版本 "+VERSION);
+                return;
+            }
+            if (result < 0)
+            {
+                Log.Error("已经安装更新版本，使用更新的版本进行安装");
+                Process.Start(Path.Combine(basePath, lastInstall), args).WaitForExit();
+                Environment.Exit(1);
+                return;
+            }
+
+
+            string self = Process.GetCurrentProcess().MainModule.FileName;
+            string targetFileName = lastInstall;
+            if(targetFileName == "")
+                targetFileName = Path.GetFileName(self);
+            if (Path.GetDirectoryName(self) != basePath && Path.GetDirectoryName(Path.GetDirectoryName(self)) != basePath)
+            {
+                if (lastInstall != "" && Path.Exists(Path.Combine(basePath, lastInstall)))
+                {
+                    try
+                    {
+                        File.Delete(Path.Combine(basePath, lastInstall));
+                    }catch (Exception e)
+                    {
+                        Log.Warn("更新失败，无法删除目标文件。请确定不在运行 " + lastInstall);
+                        Log.Warn("注意：请稍后再次尝试更新本程序，使用低版本modloader加载新版mod描述可能会产生不可控的影响");
+                        return;
+                    }
+                }
+                string dep = Path.Combine(Path.GetDirectoryName(self), "PVRTexLib.dll");
+                if (!Path.Exists(Path.Combine(basePath, targetFileName)))
+                {
+                    File.Copy(self, Path.Combine(basePath, targetFileName));
+                    if (Path.Exists(dep))
+                        File.Copy(dep, Path.Combine(basePath, Path.GetFileName(dep)), true);
+
+                    Log.SuccessAll("已将本程序拷贝到 " + Path.Combine(basePath, targetFileName));
+                    if (firstRun)
+                    {
+                        Log.Info("将来如果要撤销该程序的影响，请到该目录下删除mods文件夹后再次运行目录下的该程序");
+                        Log.Info("即将复制文件并修补游戏文件，如果你已经了解，请按下回车键来继续操作。这条信息之后不会再显示");
+                        Log.Wait();
+                    }
+                }    
+            }
+            File.WriteAllText(Path.Combine(basePath, "rml.info"), "#这是ResourceModLoader的安装信息记录文件，用于管理版本\n" + VERSION + "\n" + targetFileName);
+            Log.Info("版本号更新到" + VERSION);
         }
         static void Init()
         {

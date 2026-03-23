@@ -119,6 +119,7 @@ namespace ResourceModLoader.Utils
             baseField["m_ImageCount"].AsInt = 1;
             baseField["m_MipCount"].AsInt = 1;
             baseField["m_ForcedFallbackFormat"].AsInt = 4;
+            baseField["m_ColorSpace"].AsInt = 1;
             baseField["m_CompleteImageSize"].AsInt = encoded.Item3.Length;
 
 
