@@ -131,9 +131,13 @@ namespace ResourceModLoader
             if (Path.Exists(Path.Combine(currentPath, "copies.txt")))
             {
                 string self = Process.GetCurrentProcess().MainModule.FileName;
+                string dep = Path.Combine(Path.GetDirectoryName(self), "PVRTexLib.dll");
                 if (!Path.Exists(Path.Combine(basePath, Path.GetFileName(self))))
                 {
                     File.Copy(self, Path.Combine(basePath, Path.GetFileName(self)));
+                    if(Path.Exists(dep))
+                        File.Copy(dep, Path.Combine(basePath, Path.GetFileName(dep)),true);
+
                     Log.Info("已将本程序拷贝到 " + Path.Combine(basePath, Path.GetFileName(self)));
                     Log.Info("将来如果要撤销该程序的影响，请到该目录下删除mods文件夹后再次运行目录下的该程序");
                     Log.Info("即将复制文件并修补游戏文件，如果你已经了解，请按下回车键来继续操作");
