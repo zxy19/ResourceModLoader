@@ -309,7 +309,11 @@ namespace ResourceModLoader.Module
                 bundleAssetCache[bundleName] = result;
             return result;
         }
-
+        public Dictionary<string, List<Tuple<string, string>>> GetAllBundleContainerName()
+        {
+            InitFileNameContainerList();
+            return bundleFileNameContainerList;
+        }
         public string GetBundleLocalPath(string bundleName)
         {
             var rl = ccd.GetFirstAvailableResourceLocationList(bundleName);

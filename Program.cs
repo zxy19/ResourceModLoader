@@ -13,6 +13,7 @@ using ResourceModLoader.Mod;
 using ResourceModLoader.Mod.Item;
 using ResourceModLoader.Module;
 using ResourceModLoader.Tool;
+using ResourceModLoader.Tool.Creator;
 using ResourceModLoader.Utils;
 
 namespace ResourceModLoader
@@ -79,6 +80,8 @@ namespace ResourceModLoader
             {
                 ProtoExportTool.Invoke(remain, addressableMgr, scan);
             }
+            if (toolName == "create")
+                CreateTool.Invoke(Path.Combine(basePath, "mods"), addressableMgr, scan,appName);
         }
         static void ProcessMods()
         {
@@ -90,6 +93,7 @@ namespace ResourceModLoader
         }
         static string basePath = "";
         static string executable = "";
+        static string appName = "";
         static BundleScan scan;
         static AddressableMgr addressableMgr;
         static ModContext modContext;
@@ -140,8 +144,16 @@ namespace ResourceModLoader
                 var copyItems = File.ReadAllText(Path.Combine(currentPath, "copies.txt")).Split("\n");
                 foreach (var copyItem in copyItems)
                 {
-                    var p = Path.Combine(currentPath, copyItem.Trim());
-                    var target = Path.Combine(modsDirectory, copyItem.Trim());
+                    string sourceItem = copyItem;
+                    string targetItem = copyItem;
+                    if (copyItem.Contains(":"))
+                    {
+                        var t = copyItem.Split(':');
+                        sourceItem= t[0];
+                        targetItem = t[1];
+                    }
+                    var p = Path.Combine(currentPath, sourceItem.Trim());
+                    var target = Path.Combine(modsDirectory, targetItem.Trim());
                     var dir = Path.GetDirectoryName(target);
                     if(!Path.Exists(dir))
                         Directory.CreateDirectory(dir);
@@ -166,7 +178,7 @@ namespace ResourceModLoader
         }
         static void InstallAndRecordInfo(string[] args)
         {
-            int result = -1;
+            int result = 1;
             string lastInstall = "";
             bool firstRun = true;
             if (Path.Exists(Path.Combine(basePath, "rml.info")))
@@ -249,7 +261,6 @@ namespace ResourceModLoader
         {
             string localPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "LocalLow");
             string currentPath = DiscoverGameDir(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-            string appName = "";
             for (int i = 0; i < 2; i++)
             {
                 string[] allSubDirs = Directory.GetDirectories(currentPath);
@@ -364,15 +375,15 @@ namespace ResourceModLoader
                     if (FuiPatchItem.IsValid(file))
                         modContext.Add(new FuiPatchItem(priority, file));
                 }
-            }
-            var dirs = Directory.GetDirectories(modPath);
-            Array.Sort(dirs);
-            foreach (var dir in dirs)
-            {
-                var dirName = Path.GetFileName(dir);
-                if (dirName != "_generated")
+                var dirs = Directory.GetDirectories(modPath);
+                Array.Sort(dirs);
+                foreach (var dir in dirs)
                 {
-                    ApplyMod(Path.Combine(modPath, dir), priority);
+                    var dirName = Path.GetFileName(dir);
+                    if (dirName != "_generated")
+                    {
+                        ApplyMod(Path.Combine(modPath, dir), priority);
+                    }
                 }
             }
         }

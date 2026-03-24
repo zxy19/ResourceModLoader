@@ -43,6 +43,7 @@ namespace ResourceModLoader.Mod
         public void NewItem(string name, string bundleFile,string container,string referenceName) {
             Report.AddModFile(bundleFile);
             addressableMgr.NewAddressableName(name, bundleFile, container, referenceName);
+            Report.AddTaintFile(bundleFile, name);
         }
         public void Add(IModItem modItem)
         {

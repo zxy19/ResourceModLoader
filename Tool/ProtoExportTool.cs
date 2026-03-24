@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static ResourceModLoader.Mod.Item.ModJsonItem;
+using System.Xml.Linq;
 
 namespace ResourceModLoader.Tool
 {
@@ -48,26 +50,31 @@ namespace ResourceModLoader.Tool
                         return;
                     }
 
-                    var message = new ReaderMessage(dataField.AsByteArray);
-
-                    if (Directory.Exists(path))
-                    {
-                        var containers = AB.GetContainerDic(manager, bundle);
-                        string fn = $"{name}@{b}@{containers.GetValueOrDefault(file.PathId, "")}.patch.proto";
-                        path = Path.Combine(path, fn);
-                    }
-
-                    using (var f = File.OpenWrite(path))
-                    {
-                        var w = new StreamWriter(f);
-                        PrintLines(message, "", w, containsNonStr);
-                        w.Flush();
-                        Log.SuccessAll("成功导出");
-                    }
+                    var containers = AB.GetContainerDic(manager, bundle);
+                    Export(dataField.AsByteArray, path,containsNonStr, b, containers.GetValueOrDefault(file.PathId, ""), name);
                     return;
                 }
             }
             Log.Error("未找到文件");
+        }
+        public static string Export(byte[] messageBytes, string path,bool containsNonStr, string bundleName,string container,string name)
+        {
+            var message = new ReaderMessage(messageBytes);
+
+            if (Directory.Exists(path))
+            {
+                string fn = $"{name}@{bundleName}@{container}.patch.proto";
+                path = Path.Combine(path, fn);
+            }
+
+            using (var f = File.OpenWrite(path))
+            {
+                var w = new StreamWriter(f);
+                PrintLines(message, "", w, containsNonStr);
+                w.Flush();
+                Log.SuccessAll("成功导出");
+            }
+            return path;
         }
         private static void PrintLines(ReaderBase reader,string path, StreamWriter of, bool containsNonStr)
         {
