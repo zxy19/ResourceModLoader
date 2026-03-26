@@ -37,11 +37,11 @@ namespace ResourceModLoader.Mod.Item
                 this.path = AB.CreateTextAbSingle(path, this.name);
                 this.container = "2";
             }
+            else throw new ArgumentException();
             if (targetName != "")
                 this.name = targetName;
             if(refName != "")
                 this.refName = refName;
-            else throw new ArgumentException();
         }
 
         public static bool IsValid(string path,AddressableMgr addressableMgr)

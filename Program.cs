@@ -20,7 +20,7 @@ namespace ResourceModLoader
 {
     class Program
     {
-        static string VERSION = "0.1.0";
+        static string VERSION = "0.1.1";
         static void Main(string[] args)
         {
 
