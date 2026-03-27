@@ -3,6 +3,7 @@ using ResourceModLoader.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using static System.Net.Mime.MediaTypeNames;
@@ -64,11 +65,20 @@ namespace ResourceModLoader.Mod.Item
             if(path == "" || path == null)
             {
                 Report.Error(source, "无法自动包装资产AB");
+                return;
+            }
+            Report.AddModFile(source);
+            Report.AddTaintFile(source, name);
+            if (context.IsRequiredPatch("-", name))
+            {
+                string save = Path.Combine(Path.GetDirectoryName(path),Path.GetFileNameWithoutExtension(path)+ ".patch.bundle");
+                AB.MergeBundles(path, [],save, (a,b,c,d,e)=>context.PostPatch(name, name ,a, b,c,d,e));
+                path = save;
             }
             if (refName == "")
-                context.Redirect(name, path, this.container, "");
+                context.Redirect(name, path, this.container, "",true);
             else
-                context.NewItem(name, path, this.container, refName);
+                context.NewItem(name, path, this.container, refName, true);
         }
     }
 }

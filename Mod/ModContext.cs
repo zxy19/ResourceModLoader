@@ -14,6 +14,7 @@ namespace ResourceModLoader.Mod
         private AddressableMgr  addressableMgr;
         private BundleScan scan;
         public List<IModItem> modItems = new List<IModItem>();
+        public List<string> forcePatchNames = new List<string>();
         public 
         Dictionary<string,string> lastRedirect = new Dictionary<string,string>();
         public ModContext(AddressableMgr mgr, BundleScan scan) {
@@ -47,15 +48,18 @@ namespace ResourceModLoader.Mod
             }
             lastRedirect[name] = bundleFile;
         }
-        public void NewItem(string name, string bundleFile,string container,string referenceName) {
+        public void NewItem(string name, string bundleFile,string container,string referenceName,bool noReport=false) {
             if (bundleFile == "")
             {
                 Log.Error($"对{name}的添加目标不存在");
                 return;
             }
-            Report.AddModFile(bundleFile);
+            if (!noReport)
+            {
+                Report.AddModFile(bundleFile);
+                Report.AddTaintFile(bundleFile, name);
+            }
             addressableMgr.NewAddressableName(name, bundleFile, container, referenceName);
-            Report.AddTaintFile(bundleFile, name);
         }
         public void Add(IModItem modItem)
         {
@@ -87,21 +91,20 @@ namespace ResourceModLoader.Mod
                 modItems[i].Init(this, addressableMgr, scan);
             }
         }
-        public bool IsRequiredPatch(string name)
+        public bool IsRequiredPatch(string name,string addressableName)
         {
-
             foreach (IModItem modItem in modItems)
             {
-                if (modItem.RequirePatch(name)) return true;
+                if (modItem.RequirePatch(name, addressableName)) return true;
             }
             return false;
         }
-        public void PostPatch(string bundleName, AssetsManager m,BundleFileInstance b,AssetsFileInstance[] a, Dictionary<long, string>[] patched, List<List<Tuple<int, long, byte[]>>> patches)
+        public void PostPatch(string bundleName, string addressableName, AssetsManager m,BundleFileInstance b,AssetsFileInstance[] a, Dictionary<long, string>[] patched, List<List<Tuple<int, long, byte[]>>> patches)
         {
             Log.StepProgress("其他修补...", 0);
             foreach(var modItem in modItems)
             {
-                modItem.PostPatch(bundleName, m, b, a, patched, patches); ;
+                modItem.PostPatch(bundleName, addressableName, m, b, a, patched, patches); ;
             }
         }
         public void ApplyAll()

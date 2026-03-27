@@ -302,7 +302,7 @@ namespace ResourceModLoader.Module
             var rl = new ResourceLocation();
             rl.ProviderId = reference.ProviderId;
             rl.InternalId = path;
-            rl.PrimaryKey = "patched." + Path.GetFileName(path)+".bundle";
+            rl.PrimaryKey = "patched." + Path.GetFileNameWithoutExtension(path)+".bundle";
             rl.Type = reference.Type;
             AssetBundleRequestOptions opt = new AssetBundleRequestOptions();
             opt.Hash = "";

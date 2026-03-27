@@ -93,6 +93,7 @@ namespace ResourceModLoader.Module
             Log.Info("======================================================");
             Log.Info("加载文件");
             Log.Info("======================================================");
+            bool hasWarning = false;
             for (int i = 0; i < files.Count; i++)
             {
                 if (statuses[i] == FileStatus.NO_EFFECT) continue;
@@ -104,24 +105,46 @@ namespace ResourceModLoader.Module
                     Log.SuccessPartial($"{name}({effect})");
                 if (statuses[i] == FileStatus.WARNING)
                 {
+                    hasWarning = true;
                     Log.Warn($"{name}({effect})");
-                    int c = 0;
-                    foreach (var w in warnings[i])
-                    {
-                        if (c++ > 6)
-                        {
-                            Log.Warn($"...等总计{warnings[i].Count}个警告");
-                            break;
-                        }
-                        Log.Warn("\t" + w);
-                    }
                 }
                 if (statuses[i] == FileStatus.ERROR)
                 {
+                    hasWarning = true;
                     Log.Error($"{name}({effect})");
-                    foreach (var w in warnings[i])
+                }
+            }
+
+            if (hasWarning)
+            {
+                Log.Info("======================================================");
+                Log.Info("警告和错误");
+                Log.Info("======================================================");
+                for (int i = 0; i < files.Count; i++)
+                {
+                    if (statuses[i] == FileStatus.NO_EFFECT) continue;
+                    var name = files[i].Replace(modBase, "").Replace("\\", " >");
+                    if (statuses[i] == FileStatus.WARNING)
                     {
-                        Log.Error("\t" + w);
+                        Log.Warn($"{name}");
+                        int c = 0;
+                        foreach (var w in warnings[i])
+                        {
+                            if (c++ > 6)
+                            {
+                                Log.Warn($"...等总计{warnings[i].Count}个警告");
+                                break;
+                            }
+                            Log.Warn("\t" + w);
+                        }
+                    }
+                    if (statuses[i] == FileStatus.ERROR)
+                    {
+                        Log.Error($"{name}");
+                        foreach (var w in warnings[i])
+                        {
+                            Log.Error("\t" + w);
+                        }
                     }
                 }
             }

@@ -334,7 +334,6 @@ namespace ResourceModLoader.Utils
                 assets[i] = manager.LoadAssetsFileFromBundle(bundle, i);
             }
 
-            bundles.Reverse();
             List<List<Tuple<int, long, byte[]>>> patches = new List<List<Tuple<int, long, byte[]>>>();
             foreach (string file in bundles)
             {

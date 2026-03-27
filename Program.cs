@@ -20,7 +20,7 @@ namespace ResourceModLoader
 {
     class Program
     {
-        static string VERSION = "0.1.1";
+        static string VERSION = "0.1.2";
         static void Main(string[] args)
         {
 
@@ -371,8 +371,6 @@ namespace ResourceModLoader
                         modContext.Add(new WrappableFileItem(priority, file));
                     if (CommonPatchItem.IsValid(file))
                         modContext.Add(new CommonPatchItem(priority, file));
-                    if (FuiPatchItem.IsValid(file))
-                        modContext.Add(new FuiPatchItem(priority, file));
                 }
                 var dirs = Directory.GetDirectories(modPath);
                 Array.Sort(dirs);
@@ -393,8 +391,8 @@ namespace ResourceModLoader
             foreach(var bundleName in scan.GetAllBundleName())
             {
                 var toPatch = modContext.CollectToPatch(bundleName);
-                if (toPatch.Any() || modContext.IsRequiredPatch(bundleName)) {
-                    var (result,conflicts) = AB.MergeBundles(scan.GetBundleLocalPath(bundleName), toPatch, Path.Combine(basePath, "_generated", bundleName), (m,b, a, p,r) => modContext.PostPatch(bundleName,m,b,a,p,r));
+                if (toPatch.Any() || modContext.IsRequiredPatch(bundleName, "")) {
+                    var (result,conflicts) = AB.MergeBundles(scan.GetBundleLocalPath(bundleName), toPatch, Path.Combine(basePath, "_generated", bundleName), (m,b, a, p,r) => modContext.PostPatch(bundleName,"",m,b,a,p,r));
 
                     if (result)
                     {

@@ -39,13 +39,13 @@ namespace ResourceModLoader.Mod.Item
             }
             return base.MergeToThis(modItem);
         }
-        public override bool RequirePatch(string name)
+        public override bool RequirePatch(string name, string addressableName)
         {
-            return name == this.bundle;
+            return name == this.bundle || (addressableName == this.name && this.name != "");
         }
-        public override void PostPatch(string bundleName, AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance[] assets, Dictionary<long, string>[] patched, List<List<Tuple<int, long, byte[]>>> patches)
+        public override void PostPatch(string bundleName, string addressableName, AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance[] assets, Dictionary<long, string>[] patched, List<List<Tuple<int, long, byte[]>>> patches)
         {
-            if (ext == "" || bundleName != this.bundle) return;
+            if (ext == "" || (bundleName != this.bundle && addressableName != name)) return;
             foreach (var asset in assets)
             {
                 var container = Utils.AB.GetContainerDic(manager, asset);
