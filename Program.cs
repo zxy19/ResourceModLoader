@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Drawing.Text;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -20,7 +21,7 @@ namespace ResourceModLoader
 {
     class Program
     {
-        static string VERSION = "0.1.2";
+        static string VERSION = "0.1.3";
         static void Main(string[] args)
         {
 
@@ -53,6 +54,7 @@ namespace ResourceModLoader
                 }
             }
             InstallAndRecordInfo(args);
+            InstallDep();
             TryCopy();
             do
             {
@@ -175,6 +177,15 @@ namespace ResourceModLoader
                 }
             }
         }
+        static void InstallDep()
+        {
+            string self = Process.GetCurrentProcess().MainModule.FileName;
+            string dep = Path.Combine(Path.GetDirectoryName(self), "PVRTexLib.dll");
+            if (!Path.Exists(dep))
+                return;
+            File.Copy(dep, Path.Combine(basePath, Path.GetFileName(dep)), true);
+            Log.SuccessAll("已将PVRTexLib.dll拷贝到 " + dep);
+        }
         static void InstallAndRecordInfo(string[] args)
         {
             int result = 1;
@@ -237,13 +248,9 @@ namespace ResourceModLoader
                         return;
                     }
                 }
-                string dep = Path.Combine(Path.GetDirectoryName(self), "PVRTexLib.dll");
                 if (!Path.Exists(Path.Combine(basePath, targetFileName)))
                 {
                     File.Copy(self, Path.Combine(basePath, targetFileName));
-                    if (Path.Exists(dep))
-                        File.Copy(dep, Path.Combine(basePath, Path.GetFileName(dep)), true);
-
                     Log.SuccessAll("已将本程序拷贝到 " + Path.Combine(basePath, targetFileName));
                     if (firstRun)
                     {
@@ -304,9 +311,12 @@ namespace ResourceModLoader
             try
             {
                 addressableMgr.Add(Path.Combine(presistDir, "catalog_" + version + ".json"));
-            }catch (Exception)
+            }catch (Exception e)
             {
                 Log.Error("Addressable 初始化Catalog失败，请检查" + Path.Combine(presistDir, "catalog_" + version + ".json")+" 是否损坏");
+                Log.Error(e.ToString());
+                if(e.StackTrace != null)
+                    Log.Error(e.StackTrace);
                 addressableMgr = null;
                 return;
             }
@@ -315,9 +325,12 @@ namespace ResourceModLoader
             {
                 addressableMgr.Add(Path.Combine(currentPath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle"));
             }
-            catch (Exception)
+            catch (Exception e)
             {
                 Log.Error("Addressable 初始化Catalog失败，请检查" + Path.Combine(currentPath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle") + " 是否损坏");
+                Log.Error(e.ToString());
+                if (e.StackTrace != null)
+                    Log.Error(e.StackTrace);
                 addressableMgr = null;
                 return;
             }
