@@ -71,7 +71,7 @@ namespace ResourceModLoader.Mod.Patch
                         Report.Warning(source, $"文本修补 {p1} 对应 {result.Length} 个候选，已跳过");
                         continue;
                     }
-                    var r = (ReaderMessage)result[0];
+                    var r = (ReaderBase)result[0];
                     byte[] bytes;
                     if (target.StartsWith("##"))
                         bytes = Convert.FromBase64String(target.Substring(2));
@@ -82,18 +82,22 @@ namespace ResourceModLoader.Mod.Patch
 
                     if(!isAdd)
                         r.Replace(new ReaderMessage(bytes, r.Path, r.Parent));
-                    else
+                    else if (r is ReaderMessage rm)
                     {
                         if(lastPath != -1)
                         {
-                            var sub = ((ReaderMessage)(r.Parent)).Sub[lastPath];
-                            sub.Add(new ReaderMessage(bytes, $"{r.Parent.Path}.{lastPath}.{sub.Count}", r.Parent));
+                            var sub = ((ReaderMessage)(rm.Parent)).Sub[lastPath];
+                            sub.Add(new ReaderMessage(bytes, $"{rm.Parent.Path}.{lastPath}.{sub.Count}", r.Parent));
                             r.Parent.MarkChildReplaced();
                         }else if(toAddId != -1)
                         {
-                            r.Sub[toAddId]=new List<ReaderBase> { new ReaderMessage(bytes, $"{r.Parent.Path}.{lastPath}.{0}", r.Parent) };
+                            rm.Sub[toAddId]=new List<ReaderBase> { new ReaderMessage(bytes, $"{rm.Parent.Path}.{lastPath}.{0}", r.Parent) };
                             r.MarkChildReplaced();
                         }
+                    }
+                    else
+                    {
+                        Report.Warning(source, $"文本修补 {p1} 尝试添加字段到非Message路径上");
                     }
 
                     hasPat = true;
@@ -108,7 +112,7 @@ namespace ResourceModLoader.Mod.Patch
         public void Finalize(AssetsManager manager, AssetsFileInstance assets, AssetFileInfo file)
         {
             field["m_Script"].AsByteArray = protoObject.GetBytes() ;
-            //File.WriteAllBytes(field["m_Name"].AsString+".buf", protoObject.GetBytes());
+            File.WriteAllBytes(field["m_Name"].AsString+".buf", protoObject.GetBytes());
             file.SetNewData(field);
         }
     }

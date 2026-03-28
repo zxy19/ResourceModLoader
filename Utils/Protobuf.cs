@@ -493,7 +493,7 @@ namespace ResourceModLoader.Utils
                     // 写入数据
                     if (value is ReaderVarInt varint)
                     {
-                        WriteVarInt(stream, varint.Value);
+                        stream.AddRange(varint.GetBytes()); // 固定长度，直接追加
                     }
                     else if (value is ReaderFixed64 fixed64)
                     {
