@@ -16,6 +16,7 @@ namespace ResourceModLoader.Mod.Item
         string container = "";
         string ext = "";
         List<string> source = new List<string>();
+        List<IPatch> patchContexes = new List<IPatch>();    
         public CommonPatchItem(int priority,string source) : base(priority)
         {
             this.source = new List<string> { source };
@@ -27,6 +28,7 @@ namespace ResourceModLoader.Mod.Item
         {
             if (ext == ".proto") return new ProtobufPatch();
             if (ext == ".bin") return new BinPatch();
+            if (ext == ".fgui") return new FUIPatch();
             return null;
         }
         public override bool MergeToThis(IModItem modItem)
@@ -37,13 +39,13 @@ namespace ResourceModLoader.Mod.Item
             }
             return base.MergeToThis(modItem);
         }
-        public override bool RequirePatch(string name)
+        public override bool RequirePatch(string name, string addressableName)
         {
-            return name == this.bundle;
+            return name == this.bundle || (addressableName == this.name && this.name != "");
         }
-        public override void PostPatch(string bundleName, AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance[] assets, Dictionary<long, string>[] patched, List<List<Tuple<int, long, byte[]>>> patches)
+        public override void PostPatch(string bundleName, string addressableName, AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance[] assets, Dictionary<long, string>[] patched, List<List<Tuple<int, long, byte[]>>> patches)
         {
-            if (ext == "" || bundleName != this.bundle) return;
+            if (ext == "" || (bundleName != this.bundle && addressableName != name)) return;
             foreach (var asset in assets)
             {
                 var container = Utils.AB.GetContainerDic(manager, asset);
@@ -57,13 +59,25 @@ namespace ResourceModLoader.Mod.Item
                     if(nameField.AsString == this.name)
                     {
                         var patch = GetContext();
+
                         patch.Init(manager, asset, file);
-                        foreach(var src in this.source)
+                        foreach (var src in this.source)
+                        {
+                            Log.StepProgress($"{bundleName}应用修补{Path.GetFileName(src)}", 0);
                             if (patch.PerformPatch(src))
                                 Report.AddTaintFile(src, bundleName);
+                        }
                         patch.Finalize(manager, asset, file);
+                        patchContexes.Add(patch);
                     }
                 }
+            }
+        }
+        public override void Apply(ModContext context)
+        {
+            foreach(IPatch patch in patchContexes)
+            {
+                patch.AfterPatch(this, context);
             }
         }
         public static bool IsValid(string source)

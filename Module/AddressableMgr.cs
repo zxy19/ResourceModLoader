@@ -14,6 +14,7 @@ namespace ResourceModLoader.Module
 {
     class AddressableMgr
     {
+        private Random random = new Random();
         List<ContentCatalogData> contentCatalogDatas = new List<ContentCatalogData>();
         List<string> contentCatalogPath = new List<string>();
         List<bool> createBackup = new List<bool>();
@@ -59,6 +60,31 @@ namespace ResourceModLoader.Module
             contentCatalogPath.Add(path);
             generatedAbDictList.Add(new Dictionary<string, ResourceLocation>());
             createBackup.Add(needBackup);
+        }
+        public List<Tuple<string,string>> GetAllBundles()
+        {
+            List<Tuple<string,string>> results = new List<Tuple<string,string>>();
+            HashSet<string> seen = new HashSet<string>();
+            foreach(var ccd in contentCatalogDatas)
+            {
+                foreach(var rll in ccd.Resources)
+                {
+                    foreach(var rl in rll.Value)
+                    {
+                        if (rl.ProviderId != "UnityEngine.ResourceManagement.ResourceProviders.AssetBundleProvider")
+                            continue;
+                        if (seen.Contains(rl.PrimaryKey))
+                            continue;
+                        if(rl.Data is WrappedSerializedObject wo && wo.Object is AssetBundleRequestOptions abro)
+                        {
+                            results.Add(new Tuple<string, string>(rll.Key.ToString(), abro.BundleName));
+                            seen.Add(rl.PrimaryKey);
+                            break;
+                        }
+                    }
+                }
+            }
+            return results;
         }
         public void Reset()
         {
@@ -255,6 +281,7 @@ namespace ResourceModLoader.Module
                 else if (location.DependencyKey != null)
                 {
                     location.DependencyKey = rl.PrimaryKey;
+                    location.DependencyHashCode = rl.HashCode;
                 }
 
                 if (containerRedir != "")
@@ -277,14 +304,16 @@ namespace ResourceModLoader.Module
             var rl = new ResourceLocation();
             rl.ProviderId = reference.ProviderId;
             rl.InternalId = path;
-            rl.PrimaryKey = "patched." + Path.GetFileName(path)+".bundle";
+            rl.PrimaryKey = "patched." + Path.GetFileNameWithoutExtension(path)+".bundle";
             rl.Type = reference.Type;
+            rl.HashCode = random.Next();
             AssetBundleRequestOptions opt = new AssetBundleRequestOptions();
             opt.Hash = "";
             opt.BundleName = rl.PrimaryKey;
             if (reference.Data is WrappedSerializedObject { Object: AssetBundleRequestOptions abro, Type: SerializedType t })
             {
                 opt.ComInfo = abro.ComInfo;
+                opt.Crc = 0;
                 rl.Data = new WrappedSerializedObject(t, opt);
             }
             else
@@ -344,12 +373,13 @@ namespace ResourceModLoader.Module
                 rl.InternalId = container;
                 rl.PrimaryKey = name;
                 rl.Type = reference.Type;
+                rl.HashCode = random.Next();
                 ResourceLocation? refDep = null;
                 if(reference.Dependencies != null && reference.Dependencies.Any())
                 {
                     refDep = reference.Dependencies[0];
                 }
-                else if(reference.DependencyKey != null) { }
+                else if(reference.DependencyKey != null) 
                 {
                     refDep = ccd.Resources[reference.DependencyKey].First();
                 }
@@ -357,6 +387,7 @@ namespace ResourceModLoader.Module
                 {
                     var dep = getAbIdFor(i, bundleFile, refDep);
                     rl.DependencyKey = dep.PrimaryKey;
+                    rl.DependencyHashCode = dep.HashCode;
                     ccd.Resources[rl.PrimaryKey] = new List<ResourceLocation> { rl };
                     Log.SuccessPartial("New " + rl.PrimaryKey);
                 }

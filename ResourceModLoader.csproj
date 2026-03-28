@@ -11,10 +11,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Mod\Patch\FUIPatch.cs~RF55e6edb.TMP" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AssetsTools.NET.Addressables" Version="3.0.2" />
     <PackageReference Include="AssetsTools.NET.Texture" Version="3.0.2" />
     <PackageReference Include="ProtoUntyped" Version="3.0.0" />
     <PackageReference Include="PVRTexLib.NET" Version="1.0.3" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.5" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.0.2" />
     <PackageReference Include="BCnEncoder.NET" Version="2.3.0" />
   </ItemGroup>
@@ -50,6 +55,6 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="for /d %25%25a in ($(OutDir)\runtimes\linux*) do rd /Q /s &quot;%25%25a&quot;&#xD;&#xA;rd /Q /s $(OutDir)\runtimes\osx" />
+	  <Exec Command="for /d %25%25a in ($(OutDir)\runtimes\linux*) do rd /Q /s &quot;%25%25a&quot;&#xD;&#xA;rd /Q /s $(OutDir)\runtimes\osx" />
   </Target>
 </Project>

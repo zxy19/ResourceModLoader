@@ -3,6 +3,7 @@ using ResourceModLoader.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using static System.Net.Mime.MediaTypeNames;
@@ -15,8 +16,10 @@ namespace ResourceModLoader.Mod.Item
         string path;
         string refName="";
         string container = "";
-        public WrappableFileItem(int priority,string path) : base(priority)
+        string source;
+        public WrappableFileItem(int priority,string path,string targetName = "",string refName="") : base(priority)
         {
+            this.source = path;
             this.name = Path.GetFileNameWithoutExtension(path) ;
             if (this.name.Contains("@"))
             {
@@ -36,11 +39,15 @@ namespace ResourceModLoader.Mod.Item
                 this.container = "2";
             }
             else throw new ArgumentException();
+            if (targetName != "")
+                this.name = targetName;
+            if(refName != "")
+                this.refName = refName;
         }
 
         public static bool IsValid(string path,AddressableMgr addressableMgr)
         {
-            string fileName= Path.GetFileName(path);
+            string fileName= Path.GetFileNameWithoutExtension(path);
             if (!fileName.Contains('@') && !addressableMgr.IsAddressableName(fileName))
             {
                 return false;
@@ -55,10 +62,23 @@ namespace ResourceModLoader.Mod.Item
 
 
         override public void Apply(ModContext context) {
+            if(path == "" || path == null)
+            {
+                Report.Error(source, "无法自动包装资产AB");
+                return;
+            }
+            Report.AddModFile(source);
+            Report.AddTaintFile(source, name);
+            if (context.IsRequiredPatch("-", name))
+            {
+                string save = Path.Combine(Path.GetDirectoryName(path),Path.GetFileNameWithoutExtension(path)+ ".patch.bundle");
+                AB.MergeBundles(path, [],save, (a,b,c,d,e)=>context.PostPatch(name, name ,a, b,c,d,e));
+                path = save;
+            }
             if (refName == "")
-                context.Redirect(name, path, this.container, "");
+                context.Redirect(name, path, this.container, "",true);
             else
-                context.NewItem(name, path, this.container, refName);
+                context.NewItem(name, path, this.container, refName, true);
         }
     }
 }

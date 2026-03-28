@@ -9,24 +9,27 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using static ResourceModLoader.Mod.Item.ModJsonItem;
 
 namespace ResourceModLoader.Mod.Item
 {
     class ModJsonItem : IModItem
     {
-        class ModDescription
+        public class ModDescription
         {
+            public string? Name { get; set; }
+            public string? BaseDir { get; set; }
             public List<string>? Patch { get; set; }
             public List<Bundle>? Bundle { get; set; }
             public List<Add>? Add { get; set; }
             public List<Redirect>? Redirect { get; set; }
         }
-        class Bundle
+        public class Bundle
         {
             public string Target { get; set; }
             public string File { get; set; }
         }
-        class Add
+        public class Add
         {
             public string Name { get; set; }
             public string File { get; set; }
@@ -34,7 +37,7 @@ namespace ResourceModLoader.Mod.Item
             public string Container { get; set; }
             public string Reference { get; set; }
         }
-        class Redirect
+        public class Redirect
         {
             public string Name { get; set; }
             public string File { get; set; }
@@ -50,7 +53,22 @@ namespace ResourceModLoader.Mod.Item
             if(content == null)
             {
                 Report.Error(file, "非法的Mod JSON");
+                return;
             }
+            string name = Path.GetFileName(Path.GetDirectoryName(file));
+            if(content.Name != null)
+            {
+                name = content.Name;
+            }
+            if (name != null)
+                Report.AddModPack(file, name);
+        }
+        private string GetBaseDir()
+        {
+            string b = Path.GetDirectoryName(file);
+            if (content.BaseDir != null)
+                b = Path.Combine(b, content.BaseDir);
+            return b;
         }
         public override void Init(ModContext context, AddressableMgr addressableMgr, BundleScan bundleScan)
         {
@@ -58,39 +76,42 @@ namespace ResourceModLoader.Mod.Item
             {
                 foreach (var item in content.Patch)
                 {
-                    context.Add(new CommonPatchItem(priority, Path.Combine(Path.GetDirectoryName(file), item)));
+                    context.Add(new CommonPatchItem(priority, Path.Combine(GetBaseDir(), item)));
+                    Report.SetModPack(Path.Combine(GetBaseDir(), item), this.file);
                 }
             }
         }
         override public void Apply(ModContext context)
         {
             if (content == null) return;
-            string b = Path.GetDirectoryName(this.file);
+            string b = GetBaseDir();
             if (content.Redirect != null)
                 foreach (var redirect in content.Redirect)
                 {
-                    string file = redirect.File;
+                    string file = Path.Combine(b, redirect.File);
                     string? container = redirect.Container;
                     if(redirect.WrapType != null)
                     {
-                        (file,container) = AutoWrap(redirect.Name,Path.Combine(b, file),redirect.WrapType);
+                        (file,container) = AutoWrap(redirect.Name, file,redirect.WrapType);
                     }
                     if (file == "") continue;
                     if (container == null)
                         container = "";
                     context.Redirect(redirect.Name, file, container,"");
+                    Report.SetModPack(file, this.file);
                 }
             if (content.Add != null)
                 foreach (var add in content.Add)
                 {
-                    string file = add.File;
+                    string file = Path.Combine(b, add.File);
                     string? container = add.Container;
                     if(add.WrapType != null)
-                        (file, container) = AutoWrap(add.Name, Path.Combine(b, file), add.WrapType);
+                        (file, container) = AutoWrap(add.Name, file, add.WrapType);
                     if (file == "") continue;
                     if (container == null)
                         container = "";
                     context.NewItem(add.Name, file, container, add.Reference);
+                    Report.SetModPack(file, this.file);
                 }
         }
         private Tuple<string,string> AutoWrap(string Name,string filePath,string WrapType)
@@ -124,8 +145,11 @@ namespace ResourceModLoader.Mod.Item
             List<string> bundles = new List<string>();
             foreach (var patch in content.Bundle)
             {
-                if(patch.Target == targetBundleName)
-                    bundles.Add(patch.File);
+                if (patch.Target == targetBundleName)
+                {
+                    bundles.Add(Path.Combine(GetBaseDir(), patch.File));
+                    Report.SetModPack(Path.Combine(GetBaseDir(), patch.File), this.file);
+                }
             }
             return bundles;
         }

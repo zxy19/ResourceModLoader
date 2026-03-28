@@ -8,6 +8,8 @@ using AssetsTools.NET.Texture.TextureDecoders.CrnUnity;
 using System.Security.Cryptography;
 using System.Reflection.Metadata;
 using ResourceModLoader.Mod;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace ResourceModLoader.Utils
 {
@@ -119,6 +121,7 @@ namespace ResourceModLoader.Utils
             baseField["m_ImageCount"].AsInt = 1;
             baseField["m_MipCount"].AsInt = 1;
             baseField["m_ForcedFallbackFormat"].AsInt = 4;
+            baseField["m_ColorSpace"].AsInt = 1;
             baseField["m_CompleteImageSize"].AsInt = encoded.Item3.Length;
 
 
@@ -144,6 +147,120 @@ namespace ResourceModLoader.Utils
             return pathAb;
         }
 
+        public static Tuple<int, int, byte[]>? EncodeFromBitmap(string path)
+        {
+            try
+            {
+                using Bitmap original = new Bitmap(path);
+                // 确保像素格式为 32 位 ARGB（实际 BGRA 顺序）
+                Bitmap bitmap = original.PixelFormat == PixelFormat.Format32bppArgb
+                    ? original
+                    : new Bitmap(original.Width, original.Height, PixelFormat.Format32bppArgb);
+
+                // 锁定像素数据
+                BitmapData data = bitmap.LockBits(
+                    new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                    ImageLockMode.ReadOnly,
+                    PixelFormat.Format32bppArgb);
+
+                try
+                {
+                    int width = bitmap.Width;
+                    int height = bitmap.Height;
+                    int stride = data.Stride;
+                    int bytesPerPixel = 4;
+
+                    // 如果 stride 不等于 width * bytesPerPixel，需要复制到连续缓冲区
+                    byte[] pixelData;
+                    if (stride == width * bytesPerPixel)
+                    {
+                        // 直接使用扫描指针
+                        pixelData = new byte[width * height * bytesPerPixel];
+                        unsafe
+                        {
+                            fixed (byte* dest = pixelData)
+                            {
+                                Buffer.MemoryCopy((void*)data.Scan0, dest, pixelData.Length, pixelData.Length);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // 逐行复制，去除行填充
+                        pixelData = new byte[width * height * bytesPerPixel];
+                        unsafe
+                        {
+                            byte* src = (byte*)data.Scan0;
+                            fixed (byte* dest = pixelData)
+                            {
+                                for (int y = 0; y < height; y++)
+                                {
+                                    int srcOffset = y * stride;
+                                    int destOffset = y * width * bytesPerPixel;
+                                    Buffer.MemoryCopy(src + srcOffset, dest + destOffset, width * bytesPerPixel, width * bytesPerPixel);
+                                }
+                            }
+                        }
+                    }
+
+                    // 定义纹理头：使用 BGRA 顺序（因为 System.Drawing 的 32bppArgb 实际为 BGRA）
+                    ulong bgra8888 = PVRDefine.PVRTGENPIXELID4('b', 'g', 'r', 'a', 8, 8, 8, 8);
+                    using PVRTextureHeader header = new PVRTextureHeader(
+                        bgra8888,
+                        (uint)width,
+                        (uint)height,
+                        1,  // depth
+                        1,  // mipmaps
+                        1,  // array members
+                        1   // faces
+                    );
+
+                    // 从像素数据创建纹理
+                    unsafe
+                    {
+                        fixed (byte* ptr = pixelData)
+                        {
+                            using PVRTexture texture = new PVRTexture(header, ptr);
+
+                            // 可选：翻转 Y 轴（如果需要与原方法保持一致）
+                            texture.Flip(PVRTexLibAxis.Y);
+                            ulong RGBA8888 = PVRDefine.PVRTGENPIXELID4('a', 'r', 'g', 'b', 8, 8, 8, 8);
+
+                            // 转码为压缩格式
+                            if (!texture.Transcode(RGBA8888,
+                                                   PVRTexLibVariableType.UnsignedByteNorm,
+                                                   PVRTexLibColourSpace.sRGB,
+                                                   0, false))
+                            {
+                                return null;
+                            }
+
+                            // 获取压缩后的数据
+                            byte* compressedData = (byte*)texture.GetTextureDataPointer(0);
+                            int compressedSize = (int)texture.GetTextureDataSize(0);
+                            byte[] result = new byte[compressedSize];
+                            fixed (byte* dest = result)
+                            {
+                                Buffer.MemoryCopy(compressedData, dest, compressedSize, compressedSize);
+                            }
+
+                            return new Tuple<int, int, byte[]>((int)texture.GetTextureWidth(),
+                                                               (int)texture.GetTextureHeight(),
+                                                               result);
+                        }
+                    }
+                }
+                finally
+                {
+                    bitmap.UnlockBits(data);
+                    if (bitmap != original) bitmap.Dispose();
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
         private static Tuple<int, int, byte[]>? Encode(string path)
         {
             try
@@ -176,12 +293,17 @@ namespace ResourceModLoader.Utils
             }
             catch (Exception ex)
             {
+                try
+                {
+                    return EncodeFromBitmap(path);
+                }catch (Exception ex2) { }
                 return null;
             }
         }
 
         public static Tuple<bool, List<Tuple<string, string, string>>> MergeBundles(string originalPath, List<string> bundles, string save, Action<AssetsManager, BundleFileInstance, AssetsFileInstance[], Dictionary<long, string>[], List<List<Tuple<int, long, byte[]>>>>? post = null)
         {
+            Log.Debug("开始修补" + originalPath);
             List<Tuple<string, string, string>> conflictResults = new List<Tuple<string, string, string>>();
             Log.SetupProgress(bundles.Count);
             AssetsManager manager = new AssetsManager();
@@ -212,11 +334,10 @@ namespace ResourceModLoader.Utils
                 assets[i] = manager.LoadAssetsFileFromBundle(bundle, i);
             }
 
-            bundles.Reverse();
             List<List<Tuple<int, long, byte[]>>> patches = new List<List<Tuple<int, long, byte[]>>>();
             foreach (string file in bundles)
             {
-                Log.StepProgress("", 1);
+                Log.StepProgress(file, 1);
                 var r = PatchBundle(manager,bundle, assets, file, patched, save + ".temp1", conflictResults);
                 if (r == null)
                 {
@@ -227,14 +348,16 @@ namespace ResourceModLoader.Utils
                 }
                 patches.Add(r);
             }
-            Log.FinalizeProgress();
             if (!result) {
+                Log.FinalizeProgress();
                 return new Tuple<bool, List<Tuple<string, string, string>>>(result, conflictResults);
             }
             if (post != null)
                 post(manager,bundle, assets, patched,patches);
 
-            foreach(var pl in patches)
+            Log.FinalizeProgress();
+
+            foreach (var pl in patches)
             {
                 foreach(var (ai,fi,p) in pl)
                 {

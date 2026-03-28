@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Drawing.Text;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -13,6 +14,7 @@ using ResourceModLoader.Mod;
 using ResourceModLoader.Mod.Item;
 using ResourceModLoader.Module;
 using ResourceModLoader.Tool;
+using ResourceModLoader.Tool.Creator;
 using ResourceModLoader.Tool.SpriteAnimTool;
 using ResourceModLoader.Utils;
 
@@ -20,6 +22,7 @@ namespace ResourceModLoader
 {
     class Program
     {
+        static string VERSION = "0.1.8";
         static void Main(string[] args)
         {
 
@@ -51,21 +54,14 @@ namespace ResourceModLoader
                     return;
                 }
             }
+            InstallAndRecordInfo(args);
+            InstallDep();
             TryCopy();
-            scan.Scan();
             do
             {
-                ProcessMods();
-                ApplyAll();
-                addressableMgr.Save();
-                Report.Print(Path.Combine(basePath, "mods"));
-                if (isDevMode)
-                {
-                    addressableMgr.Reset();
-                    Report.Reset();
-                    modContext = new ModContext(addressableMgr, scan);
+                ProcessMods(isDevMode);
+                if(isDevMode)
                     Log.Info("继续运行将重新应用mod");
-                }
                 Log.Wait();
             } while (isDevMode);
         }
@@ -85,6 +81,8 @@ namespace ResourceModLoader
             {
                 ProtoExportTool.Invoke(remain, addressableMgr, scan);
             }
+            else if (toolName == "create")
+                CreateTool.Invoke(Path.Combine(basePath, "mods"), addressableMgr, scan,appName,ProcessMods);
             else if (toolName == "sprite-anim")
             {
                 HandleSpriteAnimTool(remain);
@@ -308,20 +306,35 @@ namespace ResourceModLoader
             Log.Info("  -jsonDir   导出目录（包含clip.json的根目录）");
             Log.Info("  -atlas     图集最大尺寸（默认4096）");
         }
-        static void StartGame()
+        static void ProcessMods(bool resetAfterDone)
         {
-            if (executable == "") return;
-        }
-        static void ProcessMods()
-        {
-            string modsDirectory = Path.Combine(basePath, "mods");
-            Log.Info("扫描Mods");
-            Log.SetupProgress(-1);
-            ApplyMod(modsDirectory, 100);
-            Log.FinalizeProgress("搜索结束");
+            try
+            {
+                string modsDirectory = Path.Combine(basePath, "mods");
+                Log.Info("扫描Mods");
+                Log.SetupProgress(-1);
+                ApplyMod(modsDirectory, 100, true);
+                Log.FinalizeProgress("搜索结束");
+                ApplyAll();
+                addressableMgr.Save();
+                Report.Print(Path.Combine(basePath, "mods"));
+            }
+            catch (Exception e)
+            {
+                Log.Error(e.ToString());
+                if(e.StackTrace != null)
+                    Log.Error(e.StackTrace);
+            }
+            if (resetAfterDone)
+            {
+                addressableMgr.Reset();
+                Report.Reset();
+                modContext = new ModContext(addressableMgr, scan);
+            }
         }
         static string basePath = "";
         static string executable = "";
+        static string appName = "";
         static BundleScan scan;
         static AddressableMgr addressableMgr;
         static ModContext modContext;
@@ -339,7 +352,15 @@ namespace ResourceModLoader
                     var detectPath = Path.Combine(possibleName.Trim().Replace("{User}", user), "Player.log");
                     if (File.Exists(detectPath))
                     {
-                        var unityLog = File.ReadAllText(detectPath);
+                        var unityLog = "";
+                        try
+                        {
+                            unityLog = File.ReadAllText(detectPath);
+                        }catch (Exception ex)
+                        {
+                            Log.Warn("无法打开" + possibleName + "的日志文件。如果对应的游戏正在运行，请关闭后重试");
+                            continue;
+                        }
                         var sp = unityLog.IndexOf(DETECT_STR);
                         if (sp >= 0)
                         {
@@ -360,25 +381,20 @@ namespace ResourceModLoader
 
             if (Path.Exists(Path.Combine(currentPath, "copies.txt")))
             {
-                string self = Process.GetCurrentProcess().MainModule.FileName;
-                string dep = Path.Combine(Path.GetDirectoryName(self), "PVRTexLib.dll");
-                if (!Path.Exists(Path.Combine(basePath, Path.GetFileName(self))))
-                {
-                    File.Copy(self, Path.Combine(basePath, Path.GetFileName(self)));
-                    if(Path.Exists(dep))
-                        File.Copy(dep, Path.Combine(basePath, Path.GetFileName(dep)),true);
-
-                    Log.Info("已将本程序拷贝到 " + Path.Combine(basePath, Path.GetFileName(self)));
-                    Log.Info("将来如果要撤销该程序的影响，请到该目录下删除mods文件夹后再次运行目录下的该程序");
-                    Log.Info("即将复制文件并修补游戏文件，如果你已经了解，请按下回车键来继续操作");
-                    Log.Wait();
-                }
                 string modsDirectory = Path.Combine(basePath, "mods");
                 var copyItems = File.ReadAllText(Path.Combine(currentPath, "copies.txt")).Split("\n");
                 foreach (var copyItem in copyItems)
                 {
-                    var p = Path.Combine(currentPath, copyItem.Trim());
-                    var target = Path.Combine(modsDirectory, copyItem.Trim());
+                    string sourceItem = copyItem;
+                    string targetItem = copyItem;
+                    if (copyItem.Contains(":"))
+                    {
+                        var t = copyItem.Split(':');
+                        sourceItem= t[0];
+                        targetItem = t[1];
+                    }
+                    var p = Path.Combine(currentPath, sourceItem.Trim());
+                    var target = Path.Combine(modsDirectory, targetItem.Trim());
                     var dir = Path.GetDirectoryName(target);
                     if(!Path.Exists(dir))
                         Directory.CreateDirectory(dir);
@@ -401,11 +417,96 @@ namespace ResourceModLoader
                 }
             }
         }
+        static void InstallDep()
+        {
+            string self = Process.GetCurrentProcess().MainModule.FileName;
+            string dep = Path.Combine(Path.GetDirectoryName(self), "PVRTexLib.dll");
+            if (!Path.Exists(dep) || Path.GetDirectoryName(Path.GetDirectoryName(self)) != basePath)
+                return;
+            File.Copy(dep, Path.Combine(basePath, Path.GetFileName(dep)), true);
+            Log.SuccessAll("已将PVRTexLib.dll拷贝到 " + dep);
+        }
+        static void InstallAndRecordInfo(string[] args)
+        {
+            int result = 1;
+            string lastInstall = "";
+            bool firstRun = true;
+            if (Path.Exists(Path.Combine(basePath, "rml.info")))
+            {
+                firstRun = false;
+                var infos = (File.ReadAllText(Path.Combine(basePath, "rml.info")) + "\n\n").Split("\n");
+                string tVer = infos[1];
+                lastInstall = infos[2];
+                string[] curVer = VERSION.Split(".");
+                string[] installedVer = tVer.Split(".");
+                result = 0;
+                for (int i = 0; i < curVer.Length + 1 && i < installedVer.Length + 1; i++)
+                {
+                    if (i == curVer.Length || i == installedVer.Length) break;
+                    if (int.Parse(curVer[i]) == int.Parse(installedVer[i])) continue;
+                    if (int.Parse(curVer[i]) < int.Parse(installedVer[i]))
+                        result = -1;
+                    else
+                        result = 1;
+                    break;
+                }
+            }
+            if(lastInstall != "" && !Path.Exists(Path.Combine(basePath, lastInstall)))
+            {
+                Log.Warn("虽然有安装记录，但是没有找到对应的可执行程序。重新安装当前版本");
+                result = 1;
+            }
+            if (result == 0)
+            {
+                Log.Debug("当前版本 "+VERSION);
+                return;
+            }
+            if (result < 0)
+            {
+                Log.Error("已经安装更新版本，使用更新的版本进行安装");
+                Process.Start(Path.Combine(basePath, lastInstall), args).WaitForExit();
+                Environment.Exit(1);
+                return;
+            }
+
+
+            string self = Process.GetCurrentProcess().MainModule.FileName;
+            string targetFileName = lastInstall;
+            if(targetFileName == "")
+                targetFileName = Path.GetFileName(self);
+            if (Path.GetDirectoryName(self) != basePath && Path.GetDirectoryName(Path.GetDirectoryName(self)) != basePath)
+            {
+                if (lastInstall != "" && Path.Exists(Path.Combine(basePath, lastInstall)))
+                {
+                    try
+                    {
+                        File.Delete(Path.Combine(basePath, lastInstall));
+                    }catch (Exception e)
+                    {
+                        Log.Warn("更新失败，无法删除目标文件。请确定不在运行 " + lastInstall);
+                        Log.Warn("注意：请稍后再次尝试更新本程序，使用低版本modloader加载新版mod描述可能会产生不可控的影响");
+                        return;
+                    }
+                }
+                if (!Path.Exists(Path.Combine(basePath, targetFileName)))
+                {
+                    File.Copy(self, Path.Combine(basePath, targetFileName));
+                    Log.SuccessAll("已将本程序拷贝到 " + Path.Combine(basePath, targetFileName));
+                    if (firstRun)
+                    {
+                        Log.Info("将来如果要撤销该程序的影响，请到该目录下删除mods文件夹后再次运行目录下的该程序");
+                        Log.Info("即将复制文件并修补游戏文件，如果你已经了解，请按下回车键来继续操作。这条信息之后不会再显示");
+                        Log.Wait();
+                    }
+                }    
+            }
+            File.WriteAllText(Path.Combine(basePath, "rml.info"), "#这是ResourceModLoader的安装信息记录文件，用于管理版本\n" + VERSION + "\n" + targetFileName);
+            Log.Info("版本号更新到" + VERSION);
+        }
         static void Init()
         {
             string localPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "LocalLow");
             string currentPath = DiscoverGameDir(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-            string appName = "";
             for (int i = 0; i < 2; i++)
             {
                 string[] allSubDirs = Directory.GetDirectories(currentPath);
@@ -447,11 +548,35 @@ namespace ResourceModLoader
             Log.Debug($"Game Version {version}");
 
             addressableMgr = new AddressableMgr();
-            addressableMgr.Add(Path.Combine(presistDir, "catalog_" + version + ".json"));
-            addressableMgr.Add(Path.Combine(currentPath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle"));
+            try
+            {
+                addressableMgr.Add(Path.Combine(presistDir, "catalog_" + version + ".json"));
+            }catch (Exception e)
+            {
+                Log.Error("Addressable 初始化Catalog失败，请检查" + Path.Combine(presistDir, "catalog_" + version + ".json")+" 是否损坏");
+                Log.Error(e.ToString());
+                if(e.StackTrace != null)
+                    Log.Error(e.StackTrace);
+                addressableMgr = null;
+                return;
+            }
+
+            try
+            {
+                addressableMgr.Add(Path.Combine(currentPath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle"));
+            }
+            catch (Exception e)
+            {
+                Log.Error("Addressable 初始化Catalog失败，请检查" + Path.Combine(currentPath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle") + " 是否损坏");
+                Log.Error(e.ToString());
+                if (e.StackTrace != null)
+                    Log.Error(e.StackTrace);
+                addressableMgr = null;
+                return;
+            }
+
             scan = new BundleScan(addressableMgr, Path.Combine(currentPath, appName + "_Data"), Path.Combine(presistDir, "AssetBundles"));
             modContext = new ModContext(addressableMgr, scan);
-
             string modsDirectory = Path.Combine(basePath, "mods");
 
             if (!Directory.Exists(modsDirectory))
@@ -459,7 +584,7 @@ namespace ResourceModLoader
                 Directory.CreateDirectory(modsDirectory);
             }
         }
-        static void ApplyMod(string modPath, int priority)
+        static void ApplyMod(string modPath, int priority, bool isTop = false)
         {
             if (File.Exists(Path.Combine(modPath, "priority.txt")))
                 try { priority = int.Parse(File.ReadAllText(Path.Combine(modPath, "priority.txt"))); } catch (Exception _) { }
@@ -478,6 +603,8 @@ namespace ResourceModLoader
             }
             else
             {
+                if (isTop)
+                    Report.SetCurrentModPath("");
                 var filesAll = Directory.GetFiles(modPath);
                 Array.Sort(filesAll);
                 foreach (var file in filesAll)
@@ -499,19 +626,21 @@ namespace ResourceModLoader
                         modContext.Add(new WrappableFileItem(priority, file));
                     if (CommonPatchItem.IsValid(file))
                         modContext.Add(new CommonPatchItem(priority, file));
-                    if (FuiPatchItem.IsValid(file))
-                        modContext.Add(new FuiPatchItem(priority, file));
                 }
-            }
-            var dirs = Directory.GetDirectories(modPath);
-            Array.Sort(dirs);
-            foreach (var dir in dirs)
-            {
-                var dirName = Path.GetFileName(dir);
-                if (dirName != "_generated")
+                var dirs = Directory.GetDirectories(modPath);
+                Array.Sort(dirs);
+                foreach (var dir in dirs)
                 {
-                    ApplyMod(Path.Combine(modPath, dir), priority);
+                    if (isTop)
+                        Report.SetCurrentModPath(dir);
+                    var dirName = Path.GetFileName(dir);
+                    if (dirName != "_generated")
+                    {
+                        ApplyMod(Path.Combine(modPath, dir), priority);
+                    }
                 }
+                if (isTop)
+                    Report.SetCurrentModPath("");
             }
         }
         static void MergeAndPatchBundles()
@@ -521,8 +650,8 @@ namespace ResourceModLoader
             foreach(var bundleName in scan.GetAllBundleName())
             {
                 var toPatch = modContext.CollectToPatch(bundleName);
-                if (toPatch.Any() || modContext.IsRequiredPatch(bundleName)) {
-                    var (result,conflicts) = AB.MergeBundles(scan.GetBundleLocalPath(bundleName), toPatch, Path.Combine(basePath, "_generated", bundleName), (m,b, a, p,r) => modContext.PostPatch(bundleName,m,b,a,p,r));
+                if (toPatch.Any() || modContext.IsRequiredPatch(bundleName, "")) {
+                    var (result,conflicts) = AB.MergeBundles(scan.GetBundleLocalPath(bundleName), toPatch, Path.Combine(basePath, "_generated", bundleName), (m,b, a, p,r) => modContext.PostPatch(bundleName,"",m,b,a,p,r));
 
                     if (result)
                     {

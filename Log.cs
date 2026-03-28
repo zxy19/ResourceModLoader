@@ -10,6 +10,7 @@ namespace ResourceModLoader
 {
     class Log
     {
+        private static bool disablePrefix = false;
         private static bool inProgress = false;
         private static bool padNext = false;
         private static int progressCount = 0;
@@ -57,43 +58,54 @@ namespace ResourceModLoader
             WriteLine("按任意键继续");
             Console.ReadKey();
         }
+        public static void SetPrefixEnable(bool enable)
+        {
+            disablePrefix = !enable;
+        }
+        public static void PrefixWriteLine(string prefix,string content)
+        {
+            if(disablePrefix)
+                Console.WriteLine(content);
+            else
+                Console.WriteLine($"[{prefix}] {content}");
+        }
         public static void Info(string t)
         {
             Console.ResetColor();
-            WriteLine($"[I] {t}");
+            PrefixWriteLine("I", t);
         }
 
         public static void Error(string t)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            WriteLine($"[E] {t}");
+            PrefixWriteLine("E", t);
             Console.ResetColor();
         }
         public static void Warn(string t)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            WriteLine($"[W] {t}");
+            PrefixWriteLine("W", t);
             Console.ResetColor();
         }
 
         public static void Debug(string t)
         {
             Console.ForegroundColor = ConsoleColor.DarkGray;
-            WriteLine($"[Debug] {t}");
+            PrefixWriteLine("D", t);
             Console.ResetColor();
         }
 
         public static void SuccessAll(string t)
         {
             Console.ForegroundColor = ConsoleColor.Green;
-            WriteLine($"[SA] {t}");
+            PrefixWriteLine("SA", t);
             Console.ResetColor();
         }
 
         public static void SuccessPartial(string t)
         {
             Console.ForegroundColor = ConsoleColor.Blue;
-            WriteLine($"[SP] {t}");
+            PrefixWriteLine("SP", t);
             Console.ResetColor();
         }
     }
