@@ -17,6 +17,7 @@ namespace ResourceModLoader.Mod.Item
     {
         public class ModDescription
         {
+            public string? Name { get; set; }
             public string? BaseDir { get; set; }
             public List<string>? Patch { get; set; }
             public List<Bundle>? Bundle { get; set; }
@@ -52,7 +53,15 @@ namespace ResourceModLoader.Mod.Item
             if(content == null)
             {
                 Report.Error(file, "非法的Mod JSON");
+                return;
             }
+            string name = Path.GetFileName(Path.GetDirectoryName(file));
+            if(content.Name != null)
+            {
+                name = content.Name;
+            }
+            if (name != null)
+                Report.AddModPack(file, name);
         }
         private string GetBaseDir()
         {
@@ -68,6 +77,7 @@ namespace ResourceModLoader.Mod.Item
                 foreach (var item in content.Patch)
                 {
                     context.Add(new CommonPatchItem(priority, Path.Combine(GetBaseDir(), item)));
+                    Report.SetModPack(Path.Combine(GetBaseDir(), item), this.file);
                 }
             }
         }
@@ -88,6 +98,7 @@ namespace ResourceModLoader.Mod.Item
                     if (container == null)
                         container = "";
                     context.Redirect(redirect.Name, file, container,"");
+                    Report.SetModPack(file, this.file);
                 }
             if (content.Add != null)
                 foreach (var add in content.Add)
@@ -100,6 +111,7 @@ namespace ResourceModLoader.Mod.Item
                     if (container == null)
                         container = "";
                     context.NewItem(add.Name, file, container, add.Reference);
+                    Report.SetModPack(file, this.file);
                 }
         }
         private Tuple<string,string> AutoWrap(string Name,string filePath,string WrapType)
@@ -133,8 +145,11 @@ namespace ResourceModLoader.Mod.Item
             List<string> bundles = new List<string>();
             foreach (var patch in content.Bundle)
             {
-                if(patch.Target == targetBundleName)
-                    bundles.Add( Path.Combine(GetBaseDir(),patch.File));
+                if (patch.Target == targetBundleName)
+                {
+                    bundles.Add(Path.Combine(GetBaseDir(), patch.File));
+                    Report.SetModPack(Path.Combine(GetBaseDir(), patch.File), this.file);
+                }
             }
             return bundles;
         }

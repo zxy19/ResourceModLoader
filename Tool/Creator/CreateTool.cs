@@ -16,7 +16,7 @@ namespace ResourceModLoader.Tool.Creator
 {
     class CreateTool
     {
-        public static void Invoke(string modDir,AddressableMgr addressableMgr, BundleScan scan,string appName)
+        public static void Invoke(string modDir,AddressableMgr addressableMgr, BundleScan scan,string appName, Action<bool> processMods)
         {
             var cli = new CLI();
 
@@ -43,12 +43,12 @@ namespace ResourceModLoader.Tool.Creator
             string dataPath = Path.Combine(path, mod.BaseDir == null ? "" : "data");
             if(!Path.Exists(dataPath))
                 Directory.CreateDirectory(dataPath);
-            while(true)
+            while (true)
             {
                 UpdateCliInfo(mod, cli, path);
-                var select = cli.WaitSelect("选择一项操作", ["添加图片并添加重定向", "添加文本资产并添加重定向", "提取bundle并添加修补", "提取文本并添加修补", "导入新的FGUI包", "删除项目","写出安装程序","结束"]);
+                var select = cli.WaitSelect("选择一项操作", ["添加图片并添加重定向", "添加文本资产并添加重定向", "提取bundle并添加修补", "提取文本并添加修补", "导入新的FGUI包", "删除项目", "写出安装程序" ,"重新应用mods", "结束"]);
                 if (select == 0)
-                    AddWrapableAndRedirect(mod, cli, dataPath, addressableMgr,"image", "VA11HallA_atlas0","png等图像文件");
+                    AddWrapableAndRedirect(mod, cli, dataPath, addressableMgr, "image", "VA11HallA_atlas0", "png等图像文件");
                 else if (select == 1)
                     AddWrapableAndRedirect(mod, cli, dataPath, addressableMgr, "text", "ProductRecommendation_fui", "各种文本（或类似二进制）资产");
                 else if (select == 2)
@@ -61,6 +61,12 @@ namespace ResourceModLoader.Tool.Creator
                     RemoveItem(cli, mod, dataPath);
                 else if (select == 6)
                     WriteInfo(mod, cli, modDir, appName, name);
+                else if (select == 7)
+                {
+                    processMods(true);
+                    Log.Info("按任意键返回Create tool");
+                    Log.Wait();
+                }
                 else break;
                 File.WriteAllText(Path.Combine(path, "mod.json"), JsonSerializer.Serialize(mod));
             }

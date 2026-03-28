@@ -21,7 +21,7 @@ namespace ResourceModLoader
 {
     class Program
     {
-        static string VERSION = "0.1.5";
+        static string VERSION = "0.1.6";
         static void Main(string[] args)
         {
 
@@ -58,17 +58,9 @@ namespace ResourceModLoader
             TryCopy();
             do
             {
-                ProcessMods();
-                ApplyAll();
-                addressableMgr.Save();
-                Report.Print(Path.Combine(basePath, "mods"));
-                if (isDevMode)
-                {
-                    addressableMgr.Reset();
-                    Report.Reset();
-                    modContext = new ModContext(addressableMgr, scan);
+                ProcessMods(isDevMode);
+                if(isDevMode)
                     Log.Info("继续运行将重新应用mod");
-                }
                 Log.Wait();
             } while (isDevMode);
         }
@@ -82,15 +74,33 @@ namespace ResourceModLoader
                 ProtoExportTool.Invoke(remain, addressableMgr, scan);
             }
             if (toolName == "create")
-                CreateTool.Invoke(Path.Combine(basePath, "mods"), addressableMgr, scan,appName);
+                CreateTool.Invoke(Path.Combine(basePath, "mods"), addressableMgr, scan,appName,ProcessMods);
         }
-        static void ProcessMods()
+        static void ProcessMods(bool resetAfterDone)
         {
-            string modsDirectory = Path.Combine(basePath, "mods");
-            Log.Info("扫描Mods");
-            Log.SetupProgress(-1);
-            ApplyMod(modsDirectory, 100);
-            Log.FinalizeProgress("搜索结束");
+            try
+            {
+                string modsDirectory = Path.Combine(basePath, "mods");
+                Log.Info("扫描Mods");
+                Log.SetupProgress(-1);
+                ApplyMod(modsDirectory, 100, true);
+                Log.FinalizeProgress("搜索结束");
+                ApplyAll();
+                addressableMgr.Save();
+                Report.Print(Path.Combine(basePath, "mods"));
+            }
+            catch (Exception e)
+            {
+                Log.Error(e.ToString());
+                if(e.StackTrace != null)
+                    Log.Error(e.StackTrace);
+            }
+            if (resetAfterDone)
+            {
+                addressableMgr.Reset();
+                Report.Reset();
+                modContext = new ModContext(addressableMgr, scan);
+            }
         }
         static string basePath = "";
         static string executable = "";
@@ -344,7 +354,7 @@ namespace ResourceModLoader
                 Directory.CreateDirectory(modsDirectory);
             }
         }
-        static void ApplyMod(string modPath, int priority)
+        static void ApplyMod(string modPath, int priority, bool isTop = false)
         {
             if (File.Exists(Path.Combine(modPath, "priority.txt")))
                 try { priority = int.Parse(File.ReadAllText(Path.Combine(modPath, "priority.txt"))); } catch (Exception _) { }
@@ -363,6 +373,8 @@ namespace ResourceModLoader
             }
             else
             {
+                if (isTop)
+                    Report.SetCurrentModPath("");
                 var filesAll = Directory.GetFiles(modPath);
                 Array.Sort(filesAll);
                 foreach (var file in filesAll)
@@ -389,12 +401,16 @@ namespace ResourceModLoader
                 Array.Sort(dirs);
                 foreach (var dir in dirs)
                 {
+                    if (isTop)
+                        Report.SetCurrentModPath(dir);
                     var dirName = Path.GetFileName(dir);
                     if (dirName != "_generated")
                     {
                         ApplyMod(Path.Combine(modPath, dir), priority);
                     }
                 }
+                if (isTop)
+                    Report.SetCurrentModPath("");
             }
         }
         static void MergeAndPatchBundles()

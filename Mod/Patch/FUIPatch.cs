@@ -55,6 +55,7 @@ namespace ResourceModLoader.Mod.Patch
                 else
                 {
                     modContext.Add(new WrappableFileItem(item.priority,f, n,"Common_atlas0"));
+                    Report.AddToSameModPack(f, s);
                 }
             }
         }
