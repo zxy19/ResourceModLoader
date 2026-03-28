@@ -15,6 +15,7 @@ using ResourceModLoader.Mod.Item;
 using ResourceModLoader.Module;
 using ResourceModLoader.Tool;
 using ResourceModLoader.Tool.Creator;
+using ResourceModLoader.Tool.SpriteAnimTool;
 using ResourceModLoader.Utils;
 
 namespace ResourceModLoader
@@ -66,15 +67,244 @@ namespace ResourceModLoader
         }
         static void Tool(string[] args)
         {
+            if (args.Length < 2)
+            {
+                PrintToolHelp();
+                return;
+            }
+
             string toolName = args[1];
-            string[] remain = new string[Math.Max(args.Length - 2,0)];
-            Array.Copy(args, 2,remain,0,remain.Length);
-            if(toolName == "proto-export")
+            string[] remain = new string[Math.Max(args.Length - 2, 0)];
+            Array.Copy(args, 2, remain, 0, remain.Length);
+
+            if (toolName == "proto-export")
             {
                 ProtoExportTool.Invoke(remain, addressableMgr, scan);
             }
-            if (toolName == "create")
+            else if (toolName == "create")
                 CreateTool.Invoke(Path.Combine(basePath, "mods"), addressableMgr, scan,appName,ProcessMods);
+            else if (toolName == "sprite-anim")
+            {
+                HandleSpriteAnimTool(remain);
+            }
+            else
+            {
+                Log.Warn($"未知的工具: {toolName}");
+                PrintToolHelp();
+            }
+        }
+
+        static void HandleSpriteAnimTool(string[] args)
+        {
+            if (args.Length == 0)
+            {
+                PrintSpriteAnimHelp();
+                return;
+            }
+
+            try
+            {
+                var cmd = args[0].ToLowerInvariant();
+                
+                if (cmd == "export")
+                {
+                    if (!HasArg(args, "-in") && !HasArg(args, "-out") && !HasArg(args, "-class"))
+                    {
+                        RunSpriteAnimBatchExport();
+                        return;
+                    }
+
+                    // 用法: tool sprite-anim export -in <bundle> -out <exportDir>
+                    var inPath = GetArg(args, "-in");
+                    var outDir = GetArg(args, "-out");
+
+                    if (string.IsNullOrEmpty(inPath) || string.IsNullOrEmpty(outDir))
+                    {
+                        Log.Error("export 需要 -in -out 参数，或不带参数使用自动批处理模式");
+                        PrintSpriteAnimHelp();
+                        return;
+                    }
+
+                    Directory.CreateDirectory(outDir);
+                    AbExporter.Run(inPath, outDir, string.Empty);
+                }
+                else if (cmd == "import")
+                {
+                    var atlasStr = GetArg(args, "-atlas");
+                    int atlasSize = string.IsNullOrEmpty(atlasStr) ? 4096 : int.Parse(atlasStr);
+
+                    if (!HasArg(args, "-in") && !HasArg(args, "-jsonDir") && !HasArg(args, "-out") && !HasArg(args, "-class"))
+                    {
+                        RunSpriteAnimBatchImport(atlasSize);
+                        return;
+                    }
+
+                    // 用法: tool sprite-anim import -in <bundle> -jsonDir <exportDir> -out <newBundle> [-atlas 4096]
+                    var inPath = GetArg(args, "-in");
+                    var jsonDir = GetArg(args, "-jsonDir");
+                    var outPath = GetArg(args, "-out");
+
+                    if (string.IsNullOrEmpty(inPath) || string.IsNullOrEmpty(jsonDir) || string.IsNullOrEmpty(outPath))
+                    {
+                        Log.Error("import 需要 -in -jsonDir -out 参数，或不带路径参数使用自动批处理模式");
+                        PrintSpriteAnimHelp();
+                        return;
+                    }
+
+                    AbImporter.Run(inPath, jsonDir, outPath, string.Empty, atlasSize);
+                }
+                else
+                {
+                    Log.Error($"未知的sprite-anim子命令: {cmd}");
+                    PrintSpriteAnimHelp();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"sprite-anim工具执行失败: {ex.Message}");
+                Log.Info(ex.StackTrace);
+            }
+        }
+
+        static void RunSpriteAnimBatchExport()
+        {
+            var (importDir, exportDir) = EnsureSpriteAnimWorkingDirectories();
+            var bundleFiles = EnumerateSpriteAnimBundles(importDir);
+            if (bundleFiles.Length == 0)
+            {
+                Log.Warn($"[sprite-anim] 未在 {importDir} 找到任何 AB 包");
+                return;
+            }
+
+            Log.Info($"[sprite-anim] 自动导出模式: import={importDir}, export={exportDir}");
+            foreach (var bundlePath in bundleFiles)
+            {
+                string bundleName = Path.GetFileNameWithoutExtension(bundlePath);
+                string spriteDir = Path.Combine(exportDir, bundleName, "sprite");
+                Directory.CreateDirectory(spriteDir);
+                Log.Info($"[sprite-anim] 导出 {Path.GetFileName(bundlePath)} -> {spriteDir}");
+                AbExporter.Run(bundlePath, spriteDir, string.Empty);
+            }
+        }
+
+        static void RunSpriteAnimBatchImport(int atlasSize)
+        {
+            var (importDir, exportDir) = EnsureSpriteAnimWorkingDirectories();
+            var bundleFiles = EnumerateSpriteAnimBundles(importDir);
+            if (bundleFiles.Length == 0)
+            {
+                Log.Warn($"[sprite-anim] 未在 {importDir} 找到任何 AB 包");
+                return;
+            }
+
+            Log.Info($"[sprite-anim] 自动回填模式: import={importDir}, export={exportDir}");
+            foreach (var bundlePath in bundleFiles)
+            {
+                string bundleName = Path.GetFileNameWithoutExtension(bundlePath);
+                string jsonDir = Path.Combine(exportDir, bundleName, "sprite");
+                if (!Directory.Exists(jsonDir))
+                {
+                    Log.Warn($"[sprite-anim] 跳过 {Path.GetFileName(bundlePath)}: 未找到 {jsonDir}");
+                    continue;
+                }
+
+                if (!HasClipJson(jsonDir))
+                {
+                    Log.Warn($"[sprite-anim] 跳过 {Path.GetFileName(bundlePath)}: {jsonDir} 内未找到任何 clip.json");
+                    continue;
+                }
+
+                string outBundle = Path.Combine(
+                    importDir,
+                    $"{Path.GetFileNameWithoutExtension(bundlePath)}_patched{Path.GetExtension(bundlePath)}");
+                Log.Info($"[sprite-anim] 回填 {Path.GetFileName(bundlePath)} <- {jsonDir}");
+                AbImporter.Run(bundlePath, jsonDir, outBundle, string.Empty, atlasSize);
+            }
+        }
+
+        static (string importDir, string exportDir) EnsureSpriteAnimWorkingDirectories()
+        {
+            string importDir = Path.Combine(basePath, "import");
+            string exportDir = Path.Combine(basePath, "export");
+            Directory.CreateDirectory(importDir);
+            Directory.CreateDirectory(exportDir);
+            return (importDir, exportDir);
+        }
+
+        static string[] EnumerateSpriteAnimBundles(string inputDir)
+        {
+            if (!Directory.Exists(inputDir))
+                return Array.Empty<string>();
+
+            return Directory
+                .GetFiles(inputDir, "*", SearchOption.TopDirectoryOnly)
+                .Where(IsSpriteAnimBundleCandidate)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        static bool IsSpriteAnimBundleCandidate(string filePath)
+        {
+            string extension = Path.GetExtension(filePath).ToLowerInvariant();
+            if (string.IsNullOrEmpty(extension))
+                return true;
+
+            return extension == ".ab"
+                || extension == ".bundle"
+                || extension == ".assetbundle"
+                || extension == ".unity3d";
+        }
+
+        static bool HasClipJson(string rootDir)
+        {
+            return Directory.EnumerateFiles(rootDir, "clip.json", SearchOption.AllDirectories).Any();
+        }
+
+        static bool HasArg(string[] args, string name)
+        {
+            return args.Any(arg => arg.Equals(name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        static string? GetArg(string[] args, string name)
+        {
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i].Equals(name, StringComparison.OrdinalIgnoreCase))
+                    return args[i + 1];
+            }
+            return null;
+        }
+
+        static void PrintToolHelp()
+        {
+            Log.Info("可用工具:");
+            Log.Info("  proto-export  - 导出Proto");
+            Log.Info("  sprite-anim   - AssetBundle动画导出/回填工具");
+            Log.Info("");
+            Log.Info("使用 'tool <toolName> help' 查看详细用法");
+        }
+
+        static void PrintSpriteAnimHelp()
+        {
+            Log.Info("sprite-anim 工具 - AssetBundle动画处理");
+            Log.Info("");
+            Log.Info("自动批处理模式（基于 mods 同级目录的 import/export）:");
+            Log.Info("  tool sprite-anim export");
+            Log.Info("    从 <basePath>/import 扫描 AB 包，导出到 <basePath>/export/<bundleName>/sprite/");
+            Log.Info("  tool sprite-anim import [-atlas 4096]");
+            Log.Info("    从 <basePath>/export/<bundleName>/sprite/ 扫描 clip.json+PNG，从 <basePath>/import 查找原 AB 包，生成 <bundleName>_patched.* 到 <basePath>/import/");
+            Log.Info("");
+            Log.Info("导出动画:");
+            Log.Info("  tool sprite-anim export -in <bundle.ab> -out <exportDir>");
+            Log.Info("");
+            Log.Info("回填动画:");
+            Log.Info("  tool sprite-anim import -in <bundle.ab> -jsonDir <exportDir> -out <newBundle.ab> [-atlas 4096]");
+            Log.Info("");
+            Log.Info("参数说明:");
+            Log.Info("  -in        输入bundle路径");
+            Log.Info("  -out       输出目录或文件路径");
+            Log.Info("  -jsonDir   导出目录（包含clip.json的根目录）");
+            Log.Info("  -atlas     图集最大尺寸（默认4096）");
         }
         static void ProcessMods(bool resetAfterDone)
         {

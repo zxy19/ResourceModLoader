@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Platforms>AnyCPU;x64</Platforms>
-	<JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <JsonSerializerIsReflectionEnabled>true</JsonSerializerIsReflectionEnabled>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +20,19 @@
     <PackageReference Include="ProtoUntyped" Version="3.0.0" />
     <PackageReference Include="PVRTexLib.NET" Version="1.0.3" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.5" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.0.2" />
+    <PackageReference Include="BCnEncoder.NET" Version="2.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="AssetsTools.NET">
+      <HintPath>ThirdParty\AssetsTools.NET.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="AssetsTools.NET.Cpp2IL">
+      <HintPath>ThirdParty\AssetsTools.NET.Cpp2IL.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
@@ -35,6 +48,10 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resource1.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\UnityPy\**\*" />
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
