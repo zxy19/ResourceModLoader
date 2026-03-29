@@ -2,12 +2,6 @@
 using AssetsTools.NET.Extra;
 using PVRTexLib;
 using AssetsTools.NET.Texture;
-using System.IO;
-using static System.Net.Mime.MediaTypeNames;
-using AssetsTools.NET.Texture.TextureDecoders.CrnUnity;
-using System.Security.Cryptography;
-using System.Reflection.Metadata;
-using ResourceModLoader.Mod;
 using System.Drawing;
 using System.Drawing.Imaging;
 
@@ -159,7 +153,7 @@ namespace ResourceModLoader.Utils
 
                 // 锁定像素数据
                 BitmapData data = bitmap.LockBits(
-                    new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                    new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height),
                     ImageLockMode.ReadOnly,
                     PixelFormat.Format32bppArgb);
 

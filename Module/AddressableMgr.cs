@@ -304,7 +304,8 @@ namespace ResourceModLoader.Module
             var rl = new ResourceLocation();
             rl.ProviderId = reference.ProviderId;
             rl.InternalId = path;
-            rl.PrimaryKey = "patched." + Path.GetFileNameWithoutExtension(path)+".bundle";
+            string hash = Convert.ToHexString(MD5.HashData(File.ReadAllBytes(path)));
+            rl.PrimaryKey = "patched." + Path.GetFileNameWithoutExtension(path)+"."+ hash + ".bundle";
             rl.Type = reference.Type;
             rl.HashCode = random.Next();
             AssetBundleRequestOptions opt = new AssetBundleRequestOptions();

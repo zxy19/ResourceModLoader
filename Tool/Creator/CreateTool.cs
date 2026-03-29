@@ -16,13 +16,13 @@ namespace ResourceModLoader.Tool.Creator
 {
     class CreateTool
     {
-        public static void Invoke(string modDir,AddressableMgr addressableMgr, BundleScan scan,string appName, Action<bool> processMods)
+        public static void Invoke(GameModder modder)
         {
             var cli = new CLI();
 
             var name = cli.WaitInputText("输入Mod包的文件夹名字","");
             if (name == "") return;
-            var path = Path.Combine(modDir, name);
+            var path = Path.Combine(modder.modPath, name);
             if (!Path.Exists(path)) Directory.CreateDirectory(path);
             ModDescription mod = new ModDescription() ;
             if (Path.Exists(Path.Combine(path, "mod.json")))
@@ -48,22 +48,22 @@ namespace ResourceModLoader.Tool.Creator
                 UpdateCliInfo(mod, cli, path);
                 var select = cli.WaitSelect("选择一项操作", ["添加图片并添加重定向", "添加文本资产并添加重定向", "提取bundle并添加修补", "提取文本并添加修补", "导入新的FGUI包", "删除项目", "写出安装程序" ,"重新应用mods", "结束"]);
                 if (select == 0)
-                    AddWrapableAndRedirect(mod, cli, dataPath, addressableMgr, "image", "VA11HallA_atlas0", "png等图像文件");
+                    AddWrapableAndRedirect(mod, cli, dataPath, modder.addressableMgr, "image", "VA11HallA_atlas0", "png等图像文件");
                 else if (select == 1)
-                    AddWrapableAndRedirect(mod, cli, dataPath, addressableMgr, "text", "ProductRecommendation_fui", "各种文本（或类似二进制）资产");
+                    AddWrapableAndRedirect(mod, cli, dataPath, modder.addressableMgr, "text", "ProductRecommendation_fui", "各种文本（或类似二进制）资产");
                 else if (select == 2)
-                    FindBundleAndRedirect(mod, cli, dataPath, addressableMgr, scan);
+                    FindBundleAndRedirect(mod, cli, dataPath, modder.addressableMgr, modder.scan);
                 else if (select == 3)
-                    FindTextAndPatch(cli, mod, scan, dataPath);
+                    FindTextAndPatch(cli, mod, modder, dataPath);
                 else if (select == 4)
-                    ImportFGUIPacket(cli, mod, scan, dataPath);
+                    ImportFGUIPacket(cli, mod, modder, dataPath);
                 else if (select == 5)
                     RemoveItem(cli, mod, dataPath);
                 else if (select == 6)
-                    WriteInfo(mod, cli, modDir, appName, name);
+                    WriteInfo(mod, cli, modder.modPath,modder.appName, name);
                 else if (select == 7)
                 {
-                    processMods(true);
+                    modder.ProcessMods(true);
                     Log.Info("按任意键返回Create tool");
                     Log.Wait();
                 }
@@ -241,18 +241,18 @@ namespace ResourceModLoader.Tool.Creator
             cli.ShowMessage("文件已复制到"+targetPath+",修改后保存即可");
         }
 
-        public static void FindTextAndPatch(CLI cli,ModDescription mod, BundleScan scan,string dir)
+        public static void FindTextAndPatch(CLI cli,ModDescription mod,GameModder modder,string dir)
         {
             string name = cli.WaitInputText("输入Configure文件名(将从全部bundle中搜索，会耗时较久)");
             if (name == "") return;
-            var l = scan.GetAllBundleContainerName();
+            var l = modder.scan.GetAllBundleContainerName();
             foreach (var d in l)
             {
                 foreach (var (c, n) in d.Value)
                 {
                     if (n == name)
                     {
-                        var (m,a) = scan.GetBundle(d.Key);
+                        var (m,a) = modder.scan.GetBundle(d.Key);
 
                         foreach(var file in a.file.AssetInfos)
                         {
@@ -279,7 +279,7 @@ namespace ResourceModLoader.Tool.Creator
             return;
         }
 
-        public static void ImportFGUIPacket(CLI cli, ModDescription mod, BundleScan scan, string dir)
+        public static void ImportFGUIPacket(CLI cli, ModDescription mod,GameModder modder, string dir)
         {
             string path = cli.WaitInputText("请输入文件地址（FGUI导出的二进制文件）");
             if (path == "") return;
@@ -308,14 +308,14 @@ namespace ResourceModLoader.Tool.Creator
             if (package == null) return;
             string name = cli.WaitInputText("输入FUI文件名，一般以_fui结尾(将从全部bundle中搜索，会耗时较久)");
             if (name == "") return;
-            var l = scan.GetAllBundleContainerName();
+            var l = modder.scan.GetAllBundleContainerName();
             foreach (var d in l)
             {
                 foreach (var (c, n) in d.Value)
                 {
                     if (n == name)
                     {
-                        var (m, a) = scan.GetBundle(d.Key);
+                        var (m, a) = modder.scan.GetBundle(d.Key);
 
                         foreach (var file in a.file.AssetInfos)
                         {

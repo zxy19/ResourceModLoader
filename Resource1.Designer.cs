@@ -73,6 +73,16 @@ namespace ResourceModLoader {
         /// <summary>
         ///   查找 System.Byte[] 类型的本地化资源。
         /// </summary>
+        internal static byte[] PVRTexLib {
+            get {
+                object obj = ResourceManager.GetObject("PVRTexLib", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   查找 System.Byte[] 类型的本地化资源。
+        /// </summary>
         internal static byte[] ref2 {
             get {
                 object obj = ResourceManager.GetObject("ref2", resourceCulture);
