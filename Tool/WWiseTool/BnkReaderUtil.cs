@@ -238,36 +238,7 @@ namespace ResourceModLoader.Tool.WWiseTool
         }
         public static void SkipMusicTransNodeParams(BinaryReader br)
         {
-            // 1. MusicNodeParams
-            br.ReadByte(); // flags
-            SkipNodeBaseParams(br); // node_base_params
-
-            // children
-            uint childCount = br.ReadUInt32();
-            for (int i = 0; i < childCount; i++)
-                br.ReadUInt32(); // child id
-
-            // meter_info
-            br.ReadDouble(); // grid_period
-            br.ReadDouble(); // grid_offset
-            br.ReadSingle(); // tempo
-            br.ReadByte();   // time_signature_beat_count
-            br.ReadByte();   // time_signature_beat_value
-            br.ReadByte();   // meter_info_flag
-
-            // stingers
-            uint stingerCount = br.ReadUInt32();
-            for (int i = 0; i < stingerCount; i++)
-            {
-                br.ReadUInt32(); // trigger_id
-                br.ReadUInt32(); // segment_id
-                br.ReadUInt32(); // sync_play_at (AkSyncType)
-                br.ReadUInt32(); // cue_filter_hash
-                br.ReadInt32();  // dont_repeat_time
-                br.ReadUInt32(); // segment_look_head_count
-            }
-
-            // 2. transition_rules
+           SkipMusicNodeParams(br);
             uint transitionRuleCount = br.ReadUInt32();
             for (int i = 0; i < transitionRuleCount; i++)
             {
@@ -313,6 +284,42 @@ namespace ResourceModLoader.Tool.WWiseTool
                     br.ReadByte();   // play_pre_entry
                     br.ReadByte();   // play_post_exit
                 }
+            }
+        }
+        public static void SkipMusicNodeParams(BinaryReader br)
+        {
+            // 1. MusicNodeParams
+            br.ReadByte(); // flags
+            SkipNodeBaseParams(br); // node_base_params
+
+            // children
+            uint childCount = br.ReadUInt32();
+            for (int i = 0; i < childCount; i++)
+                br.ReadUInt32(); // child id
+            SkipStingerAndMeters(br);
+        }
+
+        public static void SkipStingerAndMeters(BinaryReader br)
+        {
+
+            // meter_info
+            br.ReadDouble(); // grid_period
+            br.ReadDouble(); // grid_offset
+            br.ReadSingle(); // tempo
+            br.ReadByte();   // time_signature_beat_count
+            br.ReadByte();   // time_signature_beat_value
+            br.ReadByte();   // meter_info_flag
+
+            // stingers
+            uint stingerCount = br.ReadUInt32();
+            for (int i = 0; i < stingerCount; i++)
+            {
+                br.ReadUInt32(); // trigger_id
+                br.ReadUInt32(); // segment_id
+                br.ReadUInt32(); // sync_play_at (AkSyncType)
+                br.ReadUInt32(); // cue_filter_hash
+                br.ReadInt32();  // dont_repeat_time
+                br.ReadUInt32(); // segment_look_head_count
             }
         }
     }

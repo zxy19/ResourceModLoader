@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.ConstrainedExecution;
 using System.Text;
 
 namespace ResourceModLoader.Tool.WWiseTool
@@ -62,6 +63,8 @@ namespace ResourceModLoader.Tool.WWiseTool
     {
         public List<uint> Next = new List<uint>();
         public List<uint> SourceId = new List<uint>();
+        public long DataOffset = 0;
+        public List<long> DurationOffset = new List<long>();
         public bool UnResolved { get; set; }
         public bool End()
         {
@@ -218,6 +221,7 @@ namespace ResourceModLoader.Tool.WWiseTool
                     long nextPos = br.BaseStream.Position + size;
                     uint id = br.ReadUInt32();
                     ChainableObjectReference cor = new ChainableObjectReference();
+                    cor.DataOffset = br.BaseStream.Position;
                     switch (bodyType)
                     {
                         case 0x03: // Action
@@ -277,6 +281,19 @@ namespace ResourceModLoader.Tool.WWiseTool
             uint cnt = br.ReadUInt32();
             for (int i = 0; i < cnt; i++)
                 ReadAndSkipFullSound(br, cor);
+            uint listCnt = br.ReadUInt32();
+            for(int i = 0;i < listCnt; i++)
+            {
+                //u32 u32 u32 d64 d64 d64
+                br.ReadUInt32();//trackId
+                br.ReadUInt32();//sourceId
+                br.ReadUInt32();//eventId
+                br.ReadDouble();
+                br.ReadDouble();
+                br.ReadDouble();
+                cor.DurationOffset.Add(br.BaseStream.Position);
+                br.ReadDouble();
+            }
         }
 
         private void ReadAndSkipFullSound(BinaryReader br, ChainableObjectReference cor)
@@ -286,11 +303,11 @@ namespace ResourceModLoader.Tool.WWiseTool
             uint sourceId = br.ReadUInt32();
             uint inMemoryMediaSize = br.ReadUInt32();
             byte sourceFlags = br.ReadByte();
-            if ((plugin & 0x0F) != 0x2)
-            {
-                uint sz = br.ReadUInt32();
-                br.BaseStream.Position += sz;
-            }
+            //if ((plugin & 0x0F) != 0x2)
+            //{
+            //    uint sz = br.ReadUInt32();
+            //    br.BaseStream.Position += sz;
+            //}
             cor.SourceId.Add(sourceId);
         }
         private void ParseRSPL(BinaryReader br, ChainableObjectReference cor)
@@ -320,6 +337,20 @@ namespace ResourceModLoader.Tool.WWiseTool
             uint len = br.ReadUInt32();
             for (int i = 0; i < len; i++)
                 cor.Next.Add(br.ReadUInt32());
+            BnkReaderUtil.SkipStingerAndMeters(br);
+            cor.DurationOffset.Add(br.BaseStream.Position);
+            double oLen = br.ReadDouble();
+            uint markerCnt = br.ReadUInt32();
+            for(int i = 0; i <= markerCnt; i++)
+            {
+                br.ReadUInt32();
+                double oMP = br.ReadDouble();
+                if(oLen - oMP < 1000)
+                {
+                    cor.DurationOffset.Add(br.BaseStream.Position - 8);
+                }
+                while (br.ReadChar() > 0) ;
+            }
         }
 
         /// <summary>
@@ -508,7 +539,6 @@ namespace ResourceModLoader.Tool.WWiseTool
             }
             uint newDidxSize = (uint)newDidxBody.Length;
 
-            // 3. 重新组装所有 sections
             using (var outMs = new MemoryStream())
             using (var writer = new BinaryWriter(outMs))
             {
@@ -549,6 +579,20 @@ namespace ResourceModLoader.Tool.WWiseTool
                             StartPosition = startPos
                         });
                     }
+                    else if (section.Magic == "HIRC")
+                    {
+                        byte[] newHircBody = GetHIRCPatches(section.Body);
+                        writer.Write(Encoding.ASCII.GetBytes("HIRC"));
+                        writer.Write((uint)newHircBody.Length);
+                        writer.Write(newHircBody);
+                        newSections.Add(new RawSection
+                        {
+                            Magic = "HIRC",
+                            Size = (uint)newHircBody.Length,
+                            Body = newHircBody,
+                            StartPosition = startPos
+                        });
+                    }
                     else
                     {
                         // 其他 section 原样保留
@@ -566,9 +610,6 @@ namespace ResourceModLoader.Tool.WWiseTool
                 }
 
                 byte[] newFile = outMs.ToArray();
-
-                // 4. 更新内部状态以反映新文件
-                // 更新 _dataSectionData 和 _dataSectionStart
                 _dataSectionData = newDataBody;
                 _dataSectionStart = dataSectionStart;
 
@@ -601,6 +642,45 @@ namespace ResourceModLoader.Tool.WWiseTool
 
                 return newFile;
             }
+        }
+
+        /// <summary>
+        /// 重新计算每个被Replaced的Duration参数
+        /// </summary>
+        /// <returns></returns>
+        byte[] GetHIRCPatches(byte[] o)
+        {
+            using var ms = new MemoryStream(o);
+            using var bw = new BinaryWriter(ms);
+            foreach(var c in _soundChainable)
+            {
+                if (!c.Value.DurationOffset.Any()) continue;
+
+                double sz = 0;
+                var chain = GetAllSourceFromChainable(c.Value);
+                bool changed = false;
+                bool err = false;
+                foreach (var c2 in chain)
+                {
+                    var si = _soundItems.Find(t => t.DescriptorId == c2);
+                    if (si.Modified)
+                        changed = true;
+                    using var msi = new MemoryStream(si.Data);
+                    using var br = new BinaryReader(msi);
+                    var s1 = WEMUtil.GetDurationMs(br);
+                    if (s1 != null)
+                        sz += (double)s1;
+                    else
+                        err = true;
+                }
+                foreach (var durOffset in c.Value.DurationOffset)
+                {
+                    bw.BaseStream.Position = durOffset;
+                    if (!err && changed)
+                        bw.Write(sz);
+                }
+            }
+            return ms.ToArray();
         }
     }
 }

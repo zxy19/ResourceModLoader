@@ -22,6 +22,7 @@
     <PackageReference Include="System.Drawing.Common" Version="10.0.5" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.0.2" />
     <PackageReference Include="BCnEncoder.NET" Version="2.3.0" />
+    <PackageReference Include="Ww2Ogg.Core" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup>

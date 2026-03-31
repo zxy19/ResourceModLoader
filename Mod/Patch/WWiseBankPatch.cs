@@ -26,7 +26,7 @@ namespace ResourceModLoader.Mod.Patch
             {
                 tStr.Add(c.AsString);
             }
-
+            //File.WriteAllBytes("4.bnk", dataField.AsByteArray);
             bnk = new WwiseBank(dataField.AsByteArray, tStr.ToArray());
         }
 
@@ -58,6 +58,7 @@ namespace ResourceModLoader.Mod.Patch
         public void Finalize(AssetsManager manager, AssetsFileInstance assets, AssetFileInfo file)
         {
             field["RawData.Array"].AsByteArray = bnk.Build();
+            //File.WriteAllBytes("3.bnk", field["RawData.Array"].AsByteArray);
             file.SetNewData(field);
         }
     }

@@ -118,6 +118,11 @@ namespace ResourceModLoader.Utils
             baseField["m_ColorSpace"].AsInt = 1;
             baseField["m_CompleteImageSize"].AsInt = encoded.Item3.Length;
 
+            baseField["m_TextureSettings"]["m_FilterMode"].AsInt = 1;
+            baseField["m_TextureSettings"]["m_Aniso"].AsInt = 1;
+            baseField["m_TextureSettings"]["m_WrapU"].AsInt = 1;
+            baseField["m_TextureSettings"]["m_WrapV"].AsInt = 1;
+            baseField["m_TextureSettings"]["m_WrapW"].AsInt = 1;
 
             AssetTypeValueField image_data = baseField["image data"];
             image_data.Value.ValueType = AssetValueType.ByteArray;
