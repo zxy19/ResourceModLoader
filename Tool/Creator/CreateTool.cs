@@ -11,6 +11,7 @@ using static ResourceModLoader.Mod.Item.ModJsonItem;
 using System.Xml.Linq;
 using System.Diagnostics;
 using ResourceModLoader.Mod.Patch;
+using ResourceModLoader.Tool.WWiseTool;
 
 namespace ResourceModLoader.Tool.Creator
 {
@@ -46,7 +47,7 @@ namespace ResourceModLoader.Tool.Creator
             while (true)
             {
                 UpdateCliInfo(mod, cli, path);
-                var select = cli.WaitSelect("选择一项操作", ["添加图片并添加重定向", "添加文本资产并添加重定向", "提取bundle并添加修补", "提取文本并添加修补", "导入新的FGUI包", "删除项目", "写出安装程序" ,"重新应用mods", "结束"]);
+                var select = cli.WaitSelect("选择一项操作", ["添加图片并添加重定向", "添加文本资产并添加重定向", "提取bundle并添加修补", "提取文本并添加修补", "导入新的FGUI包", "替换SoundBank音频", "删除项目", "写出安装程序" ,"重新应用mods", "结束"]);
                 if (select == 0)
                     AddWrapableAndRedirect(mod, cli, dataPath, modder.addressableMgr, "image", "VA11HallA_atlas0", "png等图像文件");
                 else if (select == 1)
@@ -58,10 +59,12 @@ namespace ResourceModLoader.Tool.Creator
                 else if (select == 4)
                     ImportFGUIPacket(cli, mod, modder, dataPath);
                 else if (select == 5)
-                    RemoveItem(cli, mod, dataPath);
+                    CreateWWiseBnk.FindSoundBankAndPatch(cli, mod, modder, dataPath);
                 else if (select == 6)
-                    WriteInfo(mod, cli, modder.modPath,modder.appName, name);
+                    RemoveItem(cli, mod, dataPath);
                 else if (select == 7)
+                    WriteInfo(mod, cli, modder.modPath,modder.appName, name);
+                else if (select == 8)
                 {
                     modder.ProcessMods(true);
                     Log.Info("按任意键返回Create tool");
@@ -141,9 +144,6 @@ namespace ResourceModLoader.Tool.Creator
             }
             string self = Process.GetCurrentProcess().MainModule.FileName;
             File.Copy(self,Path.Combine(modDir,modName,Path.GetFileName(self)),true);
-            string dep = Path.Combine(Path.GetDirectoryName(self), "PVRTexLib.dll");
-            if (Path.Exists(dep))
-                File.Copy(dep, Path.Combine(modDir, Path.GetFileName(dep)), true);
             cli.ShowMessage("完成");
         }
         public static void AddWrapableAndRedirect(ModJsonItem.ModDescription mod, CLI cli, string dir, AddressableMgr addressable,string wrapableType,string wrapableReference,string typeTip)

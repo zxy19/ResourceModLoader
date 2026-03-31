@@ -29,6 +29,7 @@ namespace ResourceModLoader.Mod.Item
             if (ext == ".proto") return new ProtobufPatch();
             if (ext == ".bin") return new BinPatch();
             if (ext == ".fgui") return new FUIPatch();
+            if (ext == ".bnk") return new WWiseBankPatch();
             return null;
         }
         public override bool MergeToThis(IModItem modItem)

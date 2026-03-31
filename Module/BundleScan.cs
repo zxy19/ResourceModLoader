@@ -16,7 +16,6 @@ namespace ResourceModLoader.Module
     {
         private AddressableMgr ccd;
         string DEBUG_CT = "";
-        bool enableCache = false;
         string local;
         string cache;
         bool hasBuiltFileContainer = false;
@@ -46,6 +45,7 @@ namespace ResourceModLoader.Module
             Log.SetupProgress(bundleFiles.Count);
             foreach (var (ff,fn) in bundleFiles)
             {
+                if (DEBUG_CT != "" && ff != DEBUG_CT) continue;
                 Log.StepProgress(ff);
                 var (manager,asset)= GetBundle(ff);
                 var fileContainers = GetFileContainerList(manager, asset);

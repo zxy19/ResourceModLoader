@@ -272,12 +272,7 @@ namespace ResourceModLoader.Tool.Creator
 
                 if (!string.IsNullOrEmpty(input))
                     return input;
-
-                if (!string.IsNullOrEmpty(_waitTextDefault))
-                    return _waitTextDefault;
-
-                Console.WriteLine("Input cannot be empty. Press any key to continue...");
-                Console.ReadKey(true);
+                return "";
             }
         }
         public bool ShowMessage(string message,bool canCancel = false)

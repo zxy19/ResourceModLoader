@@ -1,13 +1,14 @@
 ﻿using ResourceModLoader.Tool;
 using ResourceModLoader.Tool.Creator;
 using ResourceModLoader.Tool.SpriteAnimTool;
+using ResourceModLoader.Tool.WWiseTool;
 using ResourceModLoader.Utils;
 
 namespace ResourceModLoader
 {
     class Program
     {
-        public static string VERSION = "0.1.9";
+        public static string VERSION = "0.1.10";
         public static GameModder Modder;
         public static bool isDevMode = false;
         static void Main(string[] args)
@@ -66,6 +67,10 @@ namespace ResourceModLoader
             {
                 ProtoExportTool.Invoke(remain, Modder.addressableMgr, Modder.scan);
             }
+            if (toolName == "wwise-export")
+            {
+                WWiseExtractTool.Invoke(remain, Modder);
+            }
             else if (toolName == "create")
                 CreateTool.Invoke(Modder);
             else if (toolName == "sprite-anim")
@@ -82,6 +87,7 @@ namespace ResourceModLoader
         static void PrintToolHelp()
         {
             Log.Info("可用工具:");
+            Log.Info("  create  - 模组包创建工具");
             Log.Info("  proto-export  - 导出Proto");
             Log.Info("  sprite-anim   - AssetBundle动画导出/回填工具");
             Log.Info("");
