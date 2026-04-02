@@ -26,8 +26,12 @@ namespace ResourceModLoader.Module
         static public void SetCurrentModPath(string modPath)
         {
             fallbackModPath = modPath;
-            if (modPath != "")
+            if (modPath != "" && modPacks.FindIndex(t=>t.Item1 == modPath) == -1)
                 modPacks.Add(new Tuple<string, string>(fallbackModPath, Path.GetFileName(fallbackModPath)));
+        }
+        static public string GetCurrentModPath()
+        {
+            return fallbackModPath;
         }
         static public void AddModPack(string modPackPath,string name)
         {

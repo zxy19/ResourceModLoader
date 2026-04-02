@@ -30,7 +30,7 @@ namespace ResourceModLoader.Mod
             }
             if (lastRedirect.ContainsKey(name))
             {
-                Report.Warning(bundleFile, $"{name}的修改与{lastRedirect[name]}冲突");
+                Report.Error(bundleFile, $"{name}的修改与{lastRedirect[name]}冲突");
                 return;
             }
             if (!noReport)

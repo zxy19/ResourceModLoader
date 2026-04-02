@@ -269,7 +269,13 @@ namespace ResourceModLoader
                     {
                         string tp = Zip.ExtractAndGetPath(file);
                         if (tp != "")
+                        {
+                            string tm = Report.GetCurrentModPath();
+                            Report.AddModPack(tp, Path.GetFileNameWithoutExtension(file));
+                            Report.SetCurrentModPath(tp);
                             ApplyMod(tp, priority);
+                            Report.SetCurrentModPath(tm);
+                        }
                     }
                     if (WrappableFileItem.IsValid(file, addressableMgr))
                         modContext.Add(new WrappableFileItem(priority, file));
@@ -313,15 +319,16 @@ namespace ResourceModLoader
                     }
                     else
                     {
-                        foreach (var tp in toPatch)
+                        if (toPatch.Any())
                         {
-                            foreach (var (name, _, _) in conflicts)
-                                Report.Warning(tp, $" {bundleName} 的修补中存在 {name} 和当前的包不能兼容，无法完成修补");
-                        }
-                        if (toPatch.Count() == 1)
-                        {
-                            Report.Warning(toPatch[0], $" {bundleName} 被直接替换为当前文件，因为他是唯一符合要求的文件");
-                            modContext.Redirect(bundleName, toPatch[0], "", "", true);
+                            foreach (var tp in toPatch)
+                            {
+                                foreach (var (name, _, _) in conflicts)
+                                {
+                                    modContext.Redirect(bundleName, toPatch[0], "", "", true);
+                                    Report.Warning(tp, $" {bundleName} 的修补中存在 {name} 和当前的包不能兼容，无法完成修补，使用重定向进行修补");
+                                }
+                            }
                         }
                     }
                 }
