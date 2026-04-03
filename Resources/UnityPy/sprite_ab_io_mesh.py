@@ -1,9 +1,51 @@
-import sys, os, argparse, glob, math, struct, re, json, tempfile, shutil
+import argparse
+import glob
+import importlib.util
+import json
+import math
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
 from collections import defaultdict
 from typing import Any, Dict, List, Set, Tuple
+import random, traceback
+
+REQUIRED_PYTHON = (3, 12)
+REQUIRED_PACKAGES = {
+    "clr": "pythonnet",
+    "UnityPy": "UnityPy",
+    "PIL": "Pillow",
+}
+
+
+def _has_module(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def ensure_python312_dependencies():
+    if sys.version_info[:2] != REQUIRED_PYTHON:
+        print(
+            f"[sprite_ab_io_mesh] Recommended Python version is {REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]}; "
+            f"current version is {sys.version_info.major}.{sys.version_info.minor}."
+        )
+        return
+
+    missing_packages = [package_name for module_name, package_name in REQUIRED_PACKAGES.items() if not _has_module(module_name)]
+    if not missing_packages:
+        return
+
+    print(f"[sprite_ab_io_mesh] Installing missing packages: {', '.join(missing_packages)}")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", *missing_packages])
+
+
+ensure_python312_dependencies()
+
 import UnityPy
 from PIL import Image
-import random, traceback
 
 def ensure_dir(p): os.makedirs(p, exist_ok=True)
 def sanitize_name(s: str) -> str: return (s or "").replace("\\", "_").replace("/", "_").strip()
