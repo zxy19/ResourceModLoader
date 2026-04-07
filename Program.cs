@@ -1,4 +1,5 @@
-﻿using ResourceModLoader.Tool;
+﻿using ResourceModLoader.Module;
+using ResourceModLoader.Tool;
 using ResourceModLoader.Tool.Creator;
 using ResourceModLoader.Tool.SpriteAnimTool;
 using ResourceModLoader.Tool.WWiseTool;
@@ -32,9 +33,16 @@ namespace ResourceModLoader
                 {
                     Tool(args);
                     return;
-                }else if (args[0] == "dev")
+                }
+                else if (args[0] == "dev")
                 {
                     isDevMode = true;
+                }
+                else if (args[0] == "u" || args[0] == "update")
+                {
+                    var a = new AddressableUpdator(Modder);
+                    a.startCollectUrl();
+                    return;
                 }
                 else
                 {

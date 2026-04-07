@@ -18,8 +18,9 @@ namespace ResourceModLoader
         public readonly string appName = "";
         public readonly string localPath = "";
         public readonly string modPath = "";
-        public readonly BundleScan scan;
-        public readonly AddressableMgr addressableMgr;
+        public readonly string presistDir = "";
+        public BundleScan scan;
+        public AddressableMgr addressableMgr;
         public ModContext modContext;
         public bool isValid;
         public GameModder(string baseDir) {
@@ -57,7 +58,7 @@ namespace ResourceModLoader
                 return;
             }
             Log.Debug($"{appData[0]} / {appData[1]} ");
-            string presistDir = Path.Combine(localPath, appData[0], appData[1], "com.unity.addressables");
+            presistDir = Path.Combine(localPath, appData[0], appData[1], "com.unity.addressables");
 
 
             string addressableSettings = File.ReadAllText(Path.Combine(baseDir, appName + "_Data", "StreamingAssets", "aa", "settings.json"));
@@ -66,6 +67,17 @@ namespace ResourceModLoader
             string version = addressableSettings.Substring(offset1, offset2 - offset1);
             Log.Debug($"Game Version {version}");
 
+            modPath = Path.Combine(basePath, "mods");
+
+            if (!Directory.Exists(modPath))
+            {
+                Directory.CreateDirectory(modPath);
+            }
+            ReinitAddressableMgr(version);
+        }
+
+        public void ReinitAddressableMgr(string version)
+        {
             addressableMgr = new AddressableMgr();
             try
             {
@@ -83,11 +95,11 @@ namespace ResourceModLoader
 
             try
             {
-                addressableMgr.Add(Path.Combine(baseDir, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle"));
+                addressableMgr.Add(Path.Combine(basePath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle"));
             }
             catch (Exception e)
             {
-                Log.Error("Addressable 初始化Catalog失败，请检查" + Path.Combine(baseDir, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle") + " 是否损坏");
+                Log.Error("Addressable 初始化Catalog失败，请检查" + Path.Combine(basePath, appName + "_Data", "StreamingAssets", "aa", "catalog.bundle") + " 是否损坏");
                 Log.Error(e.ToString());
                 if (e.StackTrace != null)
                     Log.Error(e.StackTrace);
@@ -95,14 +107,8 @@ namespace ResourceModLoader
                 return;
             }
 
-            scan = new BundleScan(addressableMgr, Path.Combine(baseDir, appName + "_Data"), Path.Combine(presistDir, "AssetBundles"));
+            scan = new BundleScan(addressableMgr, Path.Combine(basePath, appName + "_Data"), Path.Combine(presistDir, "AssetBundles"));
             modContext = new ModContext(addressableMgr, scan);
-            modPath = Path.Combine(basePath, "mods");
-
-            if (!Directory.Exists(modPath))
-            {
-                Directory.CreateDirectory(modPath);
-            }
         }
 
         // 安装
