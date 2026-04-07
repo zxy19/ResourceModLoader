@@ -1306,10 +1306,11 @@ def infer_mod_atlas_cell_size(texture_plan: dict, target_frames: List[dict]) -> 
 
 
 def infer_mod_atlas_columns(texture_data, cell_w: int, cell_h: int, frame_count: int) -> int:
-    max_texture_size = 2048
+    max_texture_size = max(4096, to_int(os.environ.get("RML_MAX_ATLAS_SIZE"), 16384))
+    existing_width = max(0, round_int(getattr(texture_data, "m_Width", 0)))
     max_cols = max(1, max_texture_size // max(1, cell_w))
     max_rows = max(1, max_texture_size // max(1, cell_h))
-    existing_width = max(0, round_int(getattr(texture_data, "m_Width", 0)))
+
     if cell_w > 0 and existing_width > 0 and existing_width % cell_w == 0:
         existing_cols = max(1, existing_width // cell_w)
         existing_rows = int(math.ceil(frame_count / float(existing_cols))) if existing_cols > 0 else frame_count
