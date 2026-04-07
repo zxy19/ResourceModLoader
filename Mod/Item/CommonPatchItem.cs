@@ -40,6 +40,45 @@ namespace ResourceModLoader.Mod.Item
             }
             return base.MergeToThis(modItem);
         }
+        public override void Init(ModContext context, AddressableMgr addressableMgr, BundleScan bundleScan)
+        {
+            if (addressableMgr.IsAddressableName(bundle))
+                return;
+            if(bundle != "")
+                Log.Warn($"{bundle}不是游戏的一个资产，正在尝试匹配可能的项目");
+            string tBundle = "";
+            string tContainer = container;
+            int found = 0;
+            foreach(var b in bundleScan.GetAllBundleContainerName())
+            {
+                string bk = b.Key;
+                foreach(var (c,f) in b.Value)
+                {
+                    if(f == name && (c == container || container == ""))
+                    {
+                        found++;
+                        tBundle = bk;
+                        tContainer = c;
+                    }
+                }
+            }
+            if(found == 0) {
+                foreach (var s in source)
+                    Report.Error(s, "未匹配任何需要修补的bundle文件");
+            }else if(found > 1) {
+                foreach (var s in source)
+                    Report.Error(s, "匹配了多个bundle文件，不能确定目标");
+            }
+            else
+            {
+                if (bundle != "")
+                    Log.Warn($"{bundle}.{container}被匹配到{tBundle}.{tContainer}");
+                bundle = tBundle;
+                container = tContainer;
+                foreach (var s in source)
+                    Report.Warning(s, "来自目标匹配的文件");
+            }
+        }
         public override bool RequirePatch(string name, string addressableName)
         {
             return name == this.bundle || (addressableName == this.name && this.name != "");
