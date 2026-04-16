@@ -3,24 +3,31 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace ResourceModLoader.Tool.SpriteAnimTool
 {
     internal static class UnityPyBridge
     {
+        private const string ProgressPrefix = "[RML_PROGRESS]";
+
         public static bool TryExport(string bundlePath, string exportRoot, out string message)
         {
             return TryRun("export", bundlePath, exportRoot, out _, out message, "--unique-names");
         }
 
-        public static bool TryImport(string bundlePath, string imagesRoot, string outBundle, out string message)
+        public static bool TryImport(string bundlePath, string imagesRoot, string outBundle, bool preserveTimeline, out string message)
         {
+            var extraArgs = preserveTimeline
+                ? new[] { "--preserve-timeline" }
+                : Array.Empty<string>();
             return TryRun(
                 "import-clips",
                 bundlePath,
                 imagesRoot,
                 outBundle,
-                out message);
+                out message,
+                extraArgs);
         }
 
         private static bool TryRun(
@@ -134,6 +141,9 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
             try
             {
                 using var process = new Process();
+                var stdout = new StringBuilder();
+                var stderr = new StringBuilder();
+                var sync = new object();
                 process.StartInfo = new ProcessStartInfo
                 {
                     FileName = pythonFileName,
@@ -155,10 +165,14 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
                 foreach (var arg in extraArgs)
                     process.StartInfo.ArgumentList.Add(arg);
 
-                process.Start();
+                process.OutputDataReceived += (_, eventArgs) =>
+                    HandleProcessLine(command, eventArgs.Data, isError: false, stdout, sync);
+                process.ErrorDataReceived += (_, eventArgs) =>
+                    HandleProcessLine(command, eventArgs.Data, isError: true, stderr, sync);
 
-                string stdout = process.StandardOutput.ReadToEnd();
-                string stderr = process.StandardError.ReadToEnd();
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
 
                 if (!process.WaitForExit(300000))
                 {
@@ -167,8 +181,10 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
                     return false;
                 }
 
+                process.WaitForExit();
+
                 string output = string.Join(Environment.NewLine,
-                    new[] { stdout?.Trim(), stderr?.Trim() }
+                    new[] { stdout.ToString().Trim(), stderr.ToString().Trim() }
                         .Where(s => !string.IsNullOrWhiteSpace(s)));
 
                 if (process.ExitCode != 0)
@@ -189,6 +205,68 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
                 message = ex.Message;
                 return false;
             }
+        }
+
+        private static void HandleProcessLine(
+            string command,
+            string? line,
+            bool isError,
+            StringBuilder builder,
+            object sync)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return;
+
+            lock (sync)
+            {
+                builder.AppendLine(line);
+            }
+
+            if (TryHandleProgressLine(line))
+                return;
+
+            if (isError)
+                Log.Warn($"[UnityPy:{command}] {line}");
+            else
+                Log.Info($"[UnityPy:{command}] {line}");
+        }
+
+        private static bool TryHandleProgressLine(string line)
+        {
+            if (!line.StartsWith(ProgressPrefix, StringComparison.Ordinal))
+                return false;
+
+            string payload = line.Substring(ProgressPrefix.Length).Trim();
+            string[] parts = payload.Split('|', 3);
+            if (parts.Length < 2)
+                return false;
+
+            string kind = parts[0].Trim();
+            int value = 0;
+            _ = int.TryParse(parts[1].Trim(), out value);
+            string desc = parts.Length >= 3 ? parts[2].Trim() : string.Empty;
+
+            if (kind.Equals("SETUP", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.SetupProgress(value);
+                if (!string.IsNullOrWhiteSpace(desc))
+                    Log.StepProgress(desc, 0);
+                return true;
+            }
+
+            if (kind.Equals("STEP", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.StepProgress(desc, Math.Max(0, value));
+                return true;
+            }
+
+            if (kind.Equals("DONE", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.FinalizeProgress(string.IsNullOrWhiteSpace(desc) ? null : desc);
+                return true;
+            }
+
+            return false;
         }
 
         private static IEnumerable<(string fileName, string[] prefixArgs, string displayName)> EnumeratePythonLaunchers(params string?[] contextPaths)

@@ -47,10 +47,11 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
                 {
                     var atlasStr = GetArg(args, "-atlas");
                     int atlasSize = string.IsNullOrEmpty(atlasStr) ? 4096 : int.Parse(atlasStr);
+                    bool preserveTimeline = HasArg(args, "-pt") || HasArg(args, "-preserveTimeline") || HasArg(args, "--preserve-timeline");
 
                     if (!HasArg(args, "-in") && !HasArg(args, "-jsonDir") && !HasArg(args, "-out") && !HasArg(args, "-class"))
                     {
-                        RunSpriteAnimBatchImport(atlasSize);
+                        RunSpriteAnimBatchImport(atlasSize, preserveTimeline);
                         return;
                     }
 
@@ -66,7 +67,7 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
                         return;
                     }
 
-                    AbImporter.Run(inPath, jsonDir, outPath, string.Empty, atlasSize);
+                    AbImporter.Run(inPath, jsonDir, outPath, string.Empty, atlasSize, preserveTimeline);
                 }
                 else
                 {
@@ -77,7 +78,7 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
             catch (Exception ex)
             {
                 Log.Error($"sprite-anim工具执行失败: {ex.Message}");
-                Log.Info(ex.StackTrace);
+                Log.Info(ex.StackTrace ?? string.Empty);
             }
         }
 
@@ -102,7 +103,7 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
             }
         }
 
-        static void RunSpriteAnimBatchImport(int atlasSize)
+        static void RunSpriteAnimBatchImport(int atlasSize, bool preserveTimeline)
         {
             var (importDir, exportDir) = EnsureSpriteAnimWorkingDirectories();
             var bundleFiles = EnumerateSpriteAnimBundles(importDir);
@@ -133,7 +134,7 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
                     importDir,
                     $"{Path.GetFileNameWithoutExtension(bundlePath)}_patched{Path.GetExtension(bundlePath)}");
                 Log.Info($"[sprite-anim] 回填 {Path.GetFileName(bundlePath)} <- {jsonDir}");
-                AbImporter.Run(bundlePath, jsonDir, outBundle, string.Empty, atlasSize);
+                AbImporter.Run(bundlePath, jsonDir, outBundle, string.Empty, atlasSize, preserveTimeline);
             }
         }
 
@@ -197,20 +198,22 @@ namespace ResourceModLoader.Tool.SpriteAnimTool
             Log.Info("自动批处理模式（基于 mods 同级目录的 import/export）:");
             Log.Info("  tool sprite-anim export");
             Log.Info("    从 <basePath>/import 扫描 AB 包，导出到 <basePath>/export/<bundleName>/sprite/");
-            Log.Info("  tool sprite-anim import [-atlas 4096]");
+            Log.Info("  tool sprite-anim import [-atlas 4096] [-pt]");
             Log.Info("    从 <basePath>/export/<bundleName>/sprite/ 扫描 clip.json+PNG，从 <basePath>/import 查找原 AB 包，生成 <bundleName>_patched.* 到 <basePath>/import/");
             Log.Info("");
             Log.Info("导出动画:");
             Log.Info("  tool sprite-anim export -in <bundle.ab> -out <exportDir>");
             Log.Info("");
             Log.Info("回填动画:");
-            Log.Info("  tool sprite-anim import -in <bundle.ab> -jsonDir <exportDir> -out <newBundle.ab> [-atlas 4096]");
+            Log.Info("  tool sprite-anim import -in <bundle.ab> -jsonDir <exportDir> -out <newBundle.ab> [-atlas 4096] [-pt]");
             Log.Info("");
             Log.Info("参数说明:");
             Log.Info("  -in        输入bundle路径");
             Log.Info("  -out       输出目录或文件路径");
             Log.Info("  -jsonDir   导出目录（包含clip.json的根目录）");
             Log.Info("  -atlas     图集最大尺寸（默认4096）");
+            Log.Info("  -pt        严格按导出时的原始时间轴回填；要求 PNG 数量与源动画槽位数一致，不允许增减帧");
+            Log.Info("  -preserveTimeline / --preserve-timeline  与 -pt 等价，保留兼容");
         }
 
     }
