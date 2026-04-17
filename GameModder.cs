@@ -24,6 +24,7 @@ namespace ResourceModLoader
         public AddressableMgr addressableMgr;
         public ModContext modContext;
         public bool isValid;
+        public bool mergeMode = false;
         public GameModder(string baseDir) {
 
             for (int i = 0; i < 2; i++)
@@ -242,7 +243,6 @@ namespace ResourceModLoader
             }
         }
 
-
         void ApplyMod(string modPath, int priority, bool isTop = false)
         {
             if (File.Exists(Path.Combine(modPath, "priority.txt")))
@@ -287,7 +287,9 @@ namespace ResourceModLoader
                             Report.SetCurrentModPath(tm);
                         }
                     }
-                    if (WrappableFileItem.IsValid(file, addressableMgr))
+                    if (WrappableFileItem.IsValid(file, addressableMgr) && !this.mergeMode)
+                        modContext.Add(new WrappableFileItem(priority, file));
+                    if(ReplaceFileItem.IsValid(file, addressableMgr) && this.mergeMode)
                         modContext.Add(new WrappableFileItem(priority, file));
                     if (CommonPatchItem.IsValid(file))
                         modContext.Add(new CommonPatchItem(priority, file));

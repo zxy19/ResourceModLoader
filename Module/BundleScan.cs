@@ -1,5 +1,6 @@
 ﻿using AddressablesTools.Catalog;
 using AddressablesTools.Classes;
+using AssetRipper.TextureDecoder.Rgb.Formats;
 using AssetsTools.NET;
 using AssetsTools.NET.Extra;
 using ResourceModLoader.Utils;
@@ -149,6 +150,20 @@ namespace ResourceModLoader.Module
             AssetsFile targetAssetFile = targetAsset.file;
             var container = AB.GetContainerDic(manager, asset);
             var containerTarget = AB.GetContainerDic(targetManager, targetAsset);
+            //metadata
+
+            var bundleInfos = assetFile.GetAssetsOfType(AssetClassID.AssetBundle);
+            var bundleInfosTarget = targetAssetFile.GetAssetsOfType(AssetClassID.AssetBundle);
+            if (!bundleInfos.Any() || !bundleInfosTarget.Any())
+                return true;
+            var b1 = bundleInfos.First();
+            var b2 = bundleInfosTarget.First();
+            var field1 = manager.GetBaseField(asset, b1);
+            var field2 = targetManager.GetBaseField(targetAsset, b2);
+            if (HasBundleBreakingChange(field1, field2))
+                return true;
+
+            //一般文件
             foreach (var assetInfo in assetFile.AssetInfos)
             {
                 if (assetInfo.GetTypeId(assetFile) == (int)AssetClassID.AssetBundle)
@@ -200,7 +215,28 @@ namespace ResourceModLoader.Module
 
             return hasUnAddressable;
         }
+        public bool HasBundleBreakingChange(AssetTypeValueField field1, AssetTypeValueField field2)
+        {
+            if (!field1["m_Dependencies.Array"].IsDummy || !field2["m_Dependencies.Array"].IsDummy)
+            {
+                if (field1["m_Dependencies.Array"].IsDummy || field2["m_Dependencies.Array"].IsDummy)
+                    return true;
 
+                var a1 = field1["m_Dependencies.Array"].Children;
+                var a2 = field2["m_Dependencies.Array"].Children;
+
+                if(a1.Count !=  a2.Count)return true;
+
+                for( var i = 0; i < a1.Count; i++)
+                {
+                    if (a1[i].IsDummy || a2[i].IsDummy)
+                        return true;
+                    if(a1[i].AsString != a2[i].AsString)
+                        return true;
+                }
+            }
+            return false;
+        }
         public List<Tuple<string, string>> GetFileContainerList(AssetsManager manager, AssetsFileInstance asset)
         {
             var assetFile = asset.file;

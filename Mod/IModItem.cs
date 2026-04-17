@@ -18,7 +18,7 @@ namespace ResourceModLoader.Mod
         virtual public bool MergeToThis(IModItem modItem) { return false; }
         virtual public void Init(ModContext context,AddressableMgr addressableMgr, BundleScan bundleScan) { }
         virtual public void Apply(ModContext context) {  }
-        virtual public void PostPatch(string bundleName,string addressableName, AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance[] assets, Dictionary<long, string>[] patched, List<List<Tuple<int, long, byte[]>>> patches) {  }
+        virtual public void PostPatch(string bundleName,string addressableName, AssetsManager manager, BundleFileInstance bundle, AssetsFileInstance[] assets, Dictionary<long, string>[] patched, List<List<Tuple<int, long, byte[], int?>>> patches) {  }
         virtual public List<string> GetToPatchBundles(string targetBundleName) { return []; }
         virtual public bool RequirePatch(string name, string addressableName) { return false;}
     }
