@@ -313,5 +313,25 @@ namespace ResourceModLoader.Module
             }
             return bundlePath;
         }
+        public (string grp,string path) GetBundleGroupPath(string bundleName,string bundlePath)
+        {
+            var rl = ccd.GetFirstAvailableResourceLocationList(bundleName);
+            if (rl == null || rl.Count == 0) return ("unknown", bundleName);
+            if (bundlePath.StartsWith("{App.WebServerConfig.Path}"))
+            {
+                if (rl[0].Data is WrappedSerializedObject wo && wo.Object is AssetBundleRequestOptions abro)
+                {
+                    string abn1 = Path.GetFileNameWithoutExtension(bundleName);
+                    string abn2 = Path.GetFileNameWithoutExtension(abro.BundleName);
+                    return ("cache", $"{abn2}/{abn1}/__data");
+                }
+                return ("unknown", bundleName);
+            }
+            else if (bundlePath.StartsWith("{UnityEngine.AddressableAssets.Addressables.RuntimePath}"))
+            {
+                return ("base",Path.GetFileName(bundlePath));
+            }
+            return ("unknown",bundleName);
+        }
     }
 }

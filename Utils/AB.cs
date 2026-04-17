@@ -563,8 +563,23 @@ namespace ResourceModLoader.Utils
                         }
                         if (needCreate)
                         {
-                            result.Add(new Tuple<int, long, byte[],int?>(ai,incomingFile.PathId,buf2,incomingFile.TypeId));
-                            Log.StepProgress($"Add {iName.AsString} -> {toLoad}", 0);
+                            var existing = asset.file.GetAssetInfo(incomingFile.PathId);
+                            if (existing == null)
+                            {
+                                result.Add(new Tuple<int, long, byte[], int?>(ai, incomingFile.PathId, buf2, incomingFile.TypeId));
+                                Log.StepProgress($"Add {iName.AsString} -> {toLoad}", 0);
+                            }else if(existing.TypeId == incomingFile.TypeId)
+                            {
+                                result.Add(new Tuple<int, long, byte[], int?>(ai, incomingFile.PathId, buf2,null));
+                            }
+                            else
+                            {
+                                string name = incomingFile.PathId.ToString();
+                                var field = incomingManager.GetBaseField(incomingAsset, incomingFile);
+                                if (field != null && !field["m_Name"].IsDummy)
+                                    name = field["m_Name"].AsString;
+                                conflictResults.Add(new Tuple<string, string, string>(iName.AsString, toLoad, name));
+                            }
                         }
                     }
                 }

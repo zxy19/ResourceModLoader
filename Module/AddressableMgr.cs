@@ -19,7 +19,13 @@ namespace ResourceModLoader.Module
         List<string> contentCatalogPath = new List<string>();
         List<bool> createBackup = new List<bool>();
         List<Dictionary<string, ResourceLocation>> generatedAbDictList = new List<Dictionary<string, ResourceLocation>>();
+        List<Tuple<string,string, string>> bundleRedirects = new List<Tuple<string,string, string>>();
+        List<Tuple<string,string,string>> addressableRedirects = new List<Tuple<string,string, string>>();
 
+        public List<Tuple<string, string, string>> GetBundleRedirects()
+        {
+            return bundleRedirects;
+        }
         public int Loaded()
         {
             return contentCatalogDatas.Count;
@@ -101,6 +107,8 @@ namespace ResourceModLoader.Module
             foreach (string path in toLoad) {
                 Add(path);
             }
+            bundleRedirects.Clear();
+            addressableRedirects.Clear();
         }
         public List<Tuple<string,string>> GetAllResources()
         {
@@ -233,6 +241,7 @@ namespace ResourceModLoader.Module
             {
                 if (location.ProviderId == "UnityEngine.ResourceManagement.ResourceProviders.AssetBundleProvider")
                 {
+                    bundleRedirects.Add(new Tuple<string, string, string>(name,location.InternalId, bundleFile));
                     location.InternalId = bundleFile;
                     Log.SuccessPartial($"Bundle {name} --> {location.InternalId}");
                     patched = true;
@@ -275,11 +284,14 @@ namespace ResourceModLoader.Module
 
                 if (location.Dependencies != null)
                 {
+                    if (location.Dependencies.Any())
+                        addressableRedirects.Add(new Tuple<string, string, string>(name, location.Dependencies.First().InternalId, bundleFile));
                     location.Dependencies.Clear();
                     location.Dependencies.Add(rl);
                 }
                 else if (location.DependencyKey != null)
                 {
+                    addressableRedirects.Add(new Tuple<string, string, string>(name, location.DependencyKey.ToString(), bundleFile));
                     location.DependencyKey = rl.PrimaryKey;
                     location.DependencyHashCode = rl.HashCode;
                 }

@@ -9,7 +9,7 @@ namespace ResourceModLoader
 {
     class Program
     {
-        public static string VERSION = "0.1.15";
+        public static string VERSION = "0.1.16";
         public static GameModder Modder;
         public static bool isDevMode = false;
         static void Main(string[] args)
@@ -75,9 +75,13 @@ namespace ResourceModLoader
             {
                 ProtoExportTool.Invoke(remain, Modder.addressableMgr, Modder.scan);
             }
-            if (toolName == "wwise-export")
+            else if (toolName == "wwise-export")
             {
                 WWiseExtractTool.Invoke(remain, Modder);
+            }
+            else if (toolName == "merge")
+            {
+                MergedExportTool.ExportRedirectedBundle(Modder);
             }
             else if (toolName == "create")
                 CreateTool.Invoke(Modder);
@@ -97,6 +101,8 @@ namespace ResourceModLoader
             Log.Info("可用工具:");
             Log.Info("  create  - 模组包创建工具");
             Log.Info("  proto-export  - 导出Proto");
+            Log.Info("  wwise-export  - 导出WWise SoundBnk");
+            Log.Info("  merge  - 使用合并模式运行ModProcess，并将结果整理导出到exported");
             Log.Info("  sprite-anim   - AssetBundle动画导出/回填工具");
             Log.Info("");
             Log.Info("使用 'tool <toolName> help' 查看详细用法");

@@ -217,7 +217,7 @@ namespace ResourceModLoader
 
 
         // 执行资源
-        public void ProcessMods(bool resetAfterDone)
+        public void ProcessMods(bool resetAfterDone,bool skipSaveAddressable=false)
         {
             try
             {
@@ -226,7 +226,8 @@ namespace ResourceModLoader
                 ApplyMod(modPath, 100, true);
                 Log.FinalizeProgress("搜索结束");
                 ApplyAll();
-                addressableMgr.Save();
+                if (!skipSaveAddressable)
+                    addressableMgr.Save();
                 Report.Print(Path.Combine(basePath, "mods"));
             }
             catch (Exception e)
