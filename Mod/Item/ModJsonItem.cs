@@ -36,7 +36,8 @@ namespace ResourceModLoader.Mod.Item
             public string Name { get; set; }
             public string File { get; set; }
             public string? WrapType {  get; set; }
-            public string Container { get; set; }
+            /// <summary>Addressable InternalId（pathID）。有值时强制写入，即使同名 key 已存在。</summary>
+            public string? Container { get; set; }
             public string Reference { get; set; }
         }
         public class Redirect
@@ -127,9 +128,8 @@ namespace ResourceModLoader.Mod.Item
                     if(add.WrapType != null)
                         (file, container) = AutoWrap(add.Name, file, add.WrapType);
                     if (file == "") continue;
-                    if (container == null)
-                        container = "";
-                    context.NewItem(add.Name, file, container, add.Reference);
+                    // null = mod.json 未写 Container；空串仅当显式写了 ""。有值则 NewAddressableName 会强制覆盖已有条目。
+                    context.NewItem(add.Name, file, container ?? "", add.Reference);
                     Report.SetModPack(file, this.file);
                 }
         }

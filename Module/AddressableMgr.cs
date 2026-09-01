@@ -399,7 +399,13 @@ namespace ResourceModLoader.Module
 
         public void NewAddressableName(string name, string bundleFile, string container, string refName)
         {
-            if (IsAddressableName(name)) return;
+            // 已存在时：若 mod.json 指定了 Container，强制覆盖 InternalId，并刷新依赖 Bundle
+            if (IsAddressableName(name))
+            {
+                if (!string.IsNullOrEmpty(container))
+                    UpdateExistingAddressableAdd(name, bundleFile, container, refName);
+                return;
+            }
             for(int i=0;i< contentCatalogDatas.Count;i++)
             {
                 var ccd = contentCatalogDatas[i];
@@ -407,30 +413,79 @@ namespace ResourceModLoader.Module
                     continue;
                 var reference = ccd.Resources[refName].First();
                 if (reference == null || reference.ProviderId != "UnityEngine.ResourceManagement.ResourceProviders.BundledAssetProvider") continue;
+                // Container 未写时回退到 Reference 的 InternalId，避免写入空字符串导致白卡
+                string internalId = string.IsNullOrEmpty(container) ? reference.InternalId : container;
                 var rl = new ResourceLocation();
                 rl.ProviderId = "UnityEngine.ResourceManagement.ResourceProviders.BundledAssetProvider";
-                rl.InternalId = container;
+                rl.InternalId = internalId;
                 rl.PrimaryKey = name;
                 rl.Type = reference.Type;
                 rl.HashCode = random.Next();
-                ResourceLocation? refDep = null;
-                if(reference.Dependencies != null && reference.Dependencies.Any())
-                {
-                    refDep = reference.Dependencies[0];
-                }
-                else if(reference.DependencyKey != null) 
-                {
-                    refDep = ccd.Resources[reference.DependencyKey].First();
-                }
+                ResourceLocation? refDep = GetBundledAssetDependency(ccd, reference);
                 if (refDep != null)
                 {
                     var dep = getAbIdFor(i, bundleFile, refDep);
+                    if (dep == null) continue;
                     rl.DependencyKey = dep.PrimaryKey;
                     rl.DependencyHashCode = dep.HashCode;
                     ccd.Resources[rl.PrimaryKey] = new List<ResourceLocation> { rl };
-                    Log.SuccessPartial("New " + rl.PrimaryKey);
+                    Log.SuccessPartial($"New {rl.PrimaryKey} InternalId={rl.InternalId}");
                 }
             }
+        }
+
+        /// <summary>
+        /// 对已存在的 Add 条目强制写入 Container（InternalId），并指向新的 Bundle 文件。
+        /// </summary>
+        private void UpdateExistingAddressableAdd(string name, string bundleFile, string container, string refName)
+        {
+            for (int i = 0; i < contentCatalogDatas.Count; i++)
+            {
+                var ccd = contentCatalogDatas[i];
+                if (!ccd.Resources.ContainsKey(name) || !ccd.Resources.ContainsKey(refName))
+                    continue;
+
+                var reference = ccd.Resources[refName]
+                    .FirstOrDefault(r => r.ProviderId == "UnityEngine.ResourceManagement.ResourceProviders.BundledAssetProvider");
+                if (reference == null)
+                    continue;
+
+                ResourceLocation? refDep = GetBundledAssetDependency(ccd, reference);
+                if (refDep == null)
+                    continue;
+
+                var dep = getAbIdFor(i, bundleFile, refDep);
+                if (dep == null)
+                    continue;
+
+                foreach (var location in ccd.Resources[name])
+                {
+                    if (location.ProviderId != "UnityEngine.ResourceManagement.ResourceProviders.BundledAssetProvider")
+                        continue;
+
+                    location.InternalId = container;
+                    if (location.Dependencies != null)
+                    {
+                        location.Dependencies.Clear();
+                        location.Dependencies.Add(dep);
+                    }
+                    else
+                    {
+                        location.DependencyKey = dep.PrimaryKey;
+                        location.DependencyHashCode = dep.HashCode;
+                    }
+                    Log.SuccessPartial($"Force Container {name} InternalId={container}");
+                }
+            }
+        }
+
+        private static ResourceLocation? GetBundledAssetDependency(ContentCatalogData ccd, ResourceLocation reference)
+        {
+            if (reference.Dependencies != null && reference.Dependencies.Any())
+                return reference.Dependencies[0];
+            if (reference.DependencyKey != null && ccd.Resources.ContainsKey(reference.DependencyKey))
+                return ccd.Resources[reference.DependencyKey].First();
+            return null;
         }
     }
 }
