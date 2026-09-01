@@ -9,7 +9,7 @@ namespace ResourceModLoader
 {
     class Program
     {
-        public static string VERSION = "0.2.4";
+        public static string VERSION = "0.2.5";
         public static GameModder Modder;
         public static bool isDevMode = false;
         static void Main(string[] args)
