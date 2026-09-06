@@ -88,6 +88,8 @@ namespace ResourceModLoader
         public void ReinitAddressableMgr(string version)
         {
             addressableMgr = new AddressableMgr();
+            addressableMgr.GameDataDir = Path.Combine(basePath, appName + "_Data");
+            addressableMgr.CacheDir = Path.Combine(presistDir, "AssetBundles");
             try
             {
                 addressableMgr.Add(Path.Combine(presistDir, "catalog_" + version + ".json"));
