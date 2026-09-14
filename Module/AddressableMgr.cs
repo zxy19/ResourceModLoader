@@ -280,6 +280,9 @@ namespace ResourceModLoader.Module
             {
                 if (location.ProviderId == "UnityEngine.ResourceManagement.ResourceProviders.AssetBundleProvider")
                 {
+                    // 整包替换（如 Walk 依赖槽）：先把 mod 包 CAB 身份/Externals 对齐到被替换的官方包，再改 InternalId
+                    string officialPath = ResolveDependencyBundleFilePath(location);
+                    AlignReplacedBundleCabsToOfficial(bundleFile, officialPath, ccd, null);
                     bundleRedirects.Add(new Tuple<string, string, string>(name,location.InternalId, bundleFile));
                     location.InternalId = bundleFile;
                     Log.SuccessPartial($"Bundle {name} --> {location.InternalId}");
@@ -311,6 +314,10 @@ namespace ResourceModLoader.Module
                 {
                     continue;
                 }
+
+                // Redirect 与 Add 一样做跨服 CAB 对齐，并保留 Reference 的 sibling 依赖（Walk/共享脚本等）
+                AlignModBundleCabsToLocal(bundleFile, ccd, location);
+
                 var rl = getAbIdFor(idx, bundleFile, firstDep);
 
                 if (rl == null)
@@ -320,6 +327,8 @@ namespace ResourceModLoader.Module
                     continue;
                 }
 
+                // 把官方其余依赖挂到 patched 内容包上，再写回 BundledAsset.Dependencies
+                CopyExtraReferenceDependenciesOntoContent(ccd, location, rl);
 
                 if (location.Dependencies != null)
                 {
@@ -327,6 +336,8 @@ namespace ResourceModLoader.Module
                         addressableRedirects.Add(new Tuple<string, string, string>(name, location.Dependencies.First().InternalId, bundleFile));
                     location.Dependencies.Clear();
                     location.Dependencies.Add(rl);
+                    foreach (var sibling in ccd.Resources[rl.PrimaryKey].Skip(1))
+                        location.Dependencies.Add(sibling);
                 }
                 else if (location.DependencyKey != null)
                 {
@@ -441,8 +452,8 @@ namespace ResourceModLoader.Module
                     .FirstOrDefault(r => r.ProviderId == "UnityEngine.ResourceManagement.ResourceProviders.BundledAssetProvider");
                 if (reference == null) continue;
 
-                // 跨服：把 mod AB 内外来 MonoScript CAB 对齐到本服
-                AlignModBundleMonoScriptCabToLocal(bundleFile, ccd, reference);
+                // 跨服：同名 CAB 保留；缺共享脚本则补本服；旁路 mod CAB 改成官方
+                AlignModBundleCabsToLocal(bundleFile, ccd, reference);
 
                 // Container 未写时回退到 Reference 的 InternalId，避免写入空字符串导致白卡
                 string internalId = string.IsNullOrEmpty(container) ? reference.InternalId : container;
@@ -493,7 +504,7 @@ namespace ResourceModLoader.Module
                 if (reference == null)
                     continue;
 
-                AlignModBundleMonoScriptCabToLocal(bundleFile, ccd, reference);
+                AlignModBundleCabsToLocal(bundleFile, ccd, reference);
 
                 ResourceLocation? refDep = GetPrimaryBundleDependency(ccd, reference);
                 if (refDep == null)
@@ -633,29 +644,494 @@ namespace ResourceModLoader.Module
         }
 
         /// <summary>
-        /// 将 mod 内容 AB 内所有外来 MonoScript CAB 名，对齐为本服共享脚本包中的 CAB。
-        /// 优先直接取 catalog 统计出的共享脚本 Bundle；失败时再回退到 Reference 依赖链。
+        /// 跨服 / 同服 CAB 对齐入口（Redirect 与 Add 共用）。
         /// </summary>
-        /// <param name="bundleFile">待改写的 mod Bundle 文件。</param>
-        /// <param name="reference">可选：本服模板条目，作 CAB 解析回退。</param>
-        private void AlignModBundleMonoScriptCabToLocal(string bundleFile, ContentCatalogData ccd, ResourceLocation? reference)
+        /// <remarks>
+        /// 规则概要：
+        /// <list type="number">
+        /// <item>已与本服相同的 CAB 名不变（如 Hero125 增轨 mod，Externals 已对齐则空操作）。</item>
+        /// <item>缺本服共享脚本 CAB 时，把一个 foreign 引用改到本服共享 CAB；catalog 依赖由 <see cref="CopyExtraReferenceDependenciesOntoContent"/> 挂上。</item>
+        /// <item>Externals 指向同目录其它 mod 包时：引用与被指包身份一并改成官方对应 CAB。</item>
+        /// <item>主包未 External、但同目录有关联旁路包（如 Walk）时：旁路包自身 CAB 对齐到官方未占用的非共享槽。</item>
+        /// <item>比官方多出来、找不到映射槽的 CAB 保留原名（包内新增引用，不强行改共享）。</item>
+        /// </list>
+        /// 写盘前会释放 AssetsTools 句柄，经临时文件覆盖，避免「文件正在使用」。
+        /// </remarks>
+        /// <param name="bundleFile">mod 内容 Bundle 路径（可能被原地改 CAB 明文）。</param>
+        /// <param name="ccd">本服 catalog。</param>
+        /// <param name="reference">用作 Externals 模板的 BundledAsset（通常即被 Redirect 的条目）。</param>
+        private void AlignModBundleCabsToLocal(string bundleFile, ContentCatalogData ccd, ResourceLocation? reference)
         {
             if (!File.Exists(bundleFile))
                 return;
 
-            string? targetCab = TryResolveLocalSharedMonoScriptCab(ccd);
-            if (string.IsNullOrEmpty(targetCab) && reference != null)
-                targetCab = TryResolveMonoScriptCabFromReferenceDeps(ccd, reference);
-
-            if (string.IsNullOrEmpty(targetCab))
-            {
-                Log.Warn($"无法解析本服脚本 CAB，跳过 retarget: {Path.GetFileName(bundleFile)}");
+            List<string> modCabs = CollectMonoScriptCabsOrdered(bundleFile);
+            if (modCabs.Count == 0)
                 return;
+
+            string? sharedCab = TryResolveLocalSharedMonoScriptCab(ccd);
+            var map = BuildCrossServerCabRemap(ccd, reference, bundleFile, modCabs, sharedCab);
+            ApplyCabRemapToModTree(bundleFile, map);
+        }
+
+        /// <summary>
+        /// 整包替换官方依赖 AB（AssetBundleProvider Redirect）时的 CAB 对齐：
+        /// 先对齐 assets 文件自身 CAB 名（身份），再按 Externals 做与 <see cref="AlignModBundleCabsToLocal"/> 相同的跨服映射。
+        /// </summary>
+        /// <param name="modBundleFile">替换用的 mod Bundle。</param>
+        /// <param name="officialBundleFile">被替换的官方 Bundle 磁盘路径；找不到则仅走共享脚本回退。</param>
+        private void AlignReplacedBundleCabsToOfficial(
+            string modBundleFile,
+            string? officialBundleFile,
+            ContentCatalogData ccd,
+            ResourceLocation? reference)
+        {
+            if (!File.Exists(modBundleFile))
+                return;
+
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string? sharedCab = TryResolveLocalSharedMonoScriptCab(ccd);
+
+            if (!string.IsNullOrEmpty(officialBundleFile) && File.Exists(officialBundleFile))
+            {
+                // 身份：DirectoryInfo 上的 CAB-…（如 Walk 包 ba1b… → 官方 80f9…）
+                var modIdentity = CollectAssetsFileCabNames(modBundleFile);
+                var officialIdentity = CollectAssetsFileCabNames(officialBundleFile);
+                int nId = Math.Min(modIdentity.Count, officialIdentity.Count);
+                for (int i = 0; i < nId; i++)
+                {
+                    if (!modIdentity[i].Equals(officialIdentity[i], StringComparison.OrdinalIgnoreCase))
+                        map[modIdentity[i]] = officialIdentity[i];
+                }
+
+                List<string> modExt = CollectMonoScriptCabsOrdered(modBundleFile);
+                List<string> localExt = CollectMonoScriptCabsOrdered(officialBundleFile);
+                if (localExt.Count == 0 && reference != null)
+                {
+                    ResourceLocation? refContent = GetPrimaryBundleDependency(ccd, reference);
+                    if (refContent != null)
+                        localExt = CollectMonoScriptCabsOrdered(ResolveDependencyBundleFilePath(refContent));
+                    if (localExt.Count == 0)
+                        localExt = CollectMonoScriptCabsFromReferenceDeps(ccd, reference);
+                }
+
+                FillCrossServerCabMap(modExt, localExt, sharedCab, IndexSiblingCabFiles(Path.GetDirectoryName(modBundleFile), modBundleFile), map);
+            }
+            else
+            {
+                List<string> modExt = CollectMonoScriptCabsOrdered(modBundleFile);
+                var built = BuildCrossServerCabRemap(ccd, reference, modBundleFile, modExt, sharedCab);
+                foreach (var kv in built)
+                    map[kv.Key] = kv.Value;
             }
 
-            int hits = ReplaceAllForeignMonoScriptCabsInBundle(bundleFile, targetCab);
-            if (hits > 0)
-                Log.SuccessPartial($"Retarget script CAB x{hits} -> {targetCab} ({Path.GetFileName(bundleFile)})");
+            ApplyCabRemapToModTree(modBundleFile, map);
+        }
+
+        /// <summary>
+        /// 把 CAB 映射写回主包，以及同目录内仍含旧 CAB 明文的旁路包（一次 Apply 改齐引用与被指身份）。
+        /// </summary>
+        private static void ApplyCabRemapToModTree(string primaryBundle, Dictionary<string, string> map)
+        {
+            if (map == null || map.Count == 0)
+                return;
+
+            var targets = new List<string> { primaryBundle };
+            string? dir = Path.GetDirectoryName(primaryBundle);
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+            {
+                foreach (string f in EnumerateModBundleFiles(dir))
+                {
+                    if (f.Equals(primaryBundle, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (BundleContainsAnyCab(f, map.Keys))
+                        targets.Add(f);
+                }
+            }
+
+            string detail = string.Join(", ", map.Select(kv => $"{ShortCab(kv.Key)}->{ShortCab(kv.Value)}"));
+            foreach (string t in targets)
+            {
+                int hits = ReplaceMonoScriptCabsByMap(t, map);
+                if (hits > 0)
+                    Log.SuccessPartial($"Retarget CAB x{hits} ({Path.GetFileName(t)}): {detail}");
+            }
+        }
+
+        /// <summary>日志用短 CAB（前 12 字符 + …）。</summary>
+        private static string ShortCab(string cab)
+        {
+            if (string.IsNullOrEmpty(cab) || cab.Length < 12) return cab;
+            return cab.Substring(0, 12) + "…";
+        }
+
+        /// <summary>
+        /// 构建 foreign CAB → 本服 CAB 映射。
+        /// </summary>
+        /// <remarks>
+        /// 优先用 Reference 主内容包 Externals 顺序；数量一致则 1:1；
+        /// 不一致则 <see cref="FillCrossServerCabMap"/> + <see cref="PairUnreferencedSiblingIdentities"/>；
+        /// 仍无模板时只补一个共享脚本 CAB，其余保留。
+        /// </remarks>
+        private Dictionary<string, string> BuildCrossServerCabRemap(
+            ContentCatalogData ccd,
+            ResourceLocation? reference,
+            string bundleFile,
+            List<string> modCabs,
+            string? sharedCab)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (modCabs.Count == 0)
+                return map;
+
+            List<string>? localOrdered = null;
+            if (reference != null)
+            {
+                ResourceLocation? refContent = GetPrimaryBundleDependency(ccd, reference);
+                if (refContent != null)
+                {
+                    string refPath = ResolveDependencyBundleFilePath(refContent);
+                    localOrdered = CollectMonoScriptCabsOrdered(refPath);
+                }
+
+                if (localOrdered == null || localOrdered.Count == 0)
+                    localOrdered = CollectMonoScriptCabsFromReferenceDeps(ccd, reference);
+            }
+
+            var siblingIndex = IndexSiblingCabFiles(Path.GetDirectoryName(bundleFile), bundleFile);
+
+            if (localOrdered != null && localOrdered.Count > 0)
+            {
+                if (localOrdered.Count == modCabs.Count)
+                {
+                    // 数量一致：按 Externals 顺序 1:1；指向旁路包的项在 ApplyCabRemapToModTree 时一并改身份
+                    for (int i = 0; i < modCabs.Count; i++)
+                    {
+                        if (!modCabs[i].Equals(localOrdered[i], StringComparison.OrdinalIgnoreCase))
+                            map[modCabs[i]] = localOrdered[i];
+                    }
+                    return map;
+                }
+
+                FillCrossServerCabMap(modCabs, localOrdered, sharedCab, siblingIndex, map);
+                PairUnreferencedSiblingIdentities(modCabs, localOrdered, sharedCab, siblingIndex, map);
+                if (map.Count > 0)
+                    return map;
+            }
+
+            // 无本服 Externals 模板：仅缺共享时补一个，避免把 Timeline 增轨等多出来的引用全改掉
+            if (!string.IsNullOrEmpty(sharedCab))
+            {
+                bool hasShared = modCabs.Any(m => m.Equals(sharedCab, StringComparison.OrdinalIgnoreCase));
+                if (!hasShared)
+                {
+                    string? victim = modCabs.FirstOrDefault(m => !m.Equals(sharedCab, StringComparison.OrdinalIgnoreCase));
+                    if (!string.IsNullOrEmpty(victim))
+                        map[victim] = sharedCab;
+                }
+                return map;
+            }
+
+            if (reference != null)
+            {
+                string? fallback = TryResolveMonoScriptCabFromReferenceDeps(ccd, reference);
+                if (!string.IsNullOrEmpty(fallback)
+                    && !modCabs.Any(m => m.Equals(fallback, StringComparison.OrdinalIgnoreCase)))
+                {
+                    string? victim = modCabs.FirstOrDefault();
+                    if (!string.IsNullOrEmpty(victim))
+                        map[victim] = fallback;
+                }
+            }
+
+            return map;
+        }
+
+        /// <summary>
+        /// 数量不一致时的跨服映射：
+        /// - 已与本服重合的跳过；
+        /// - 缺本服共享脚本时，用 1 个无旁路实体的 foreign 补上共享 CAB；
+        /// - 指向同目录旁路包的 foreign → 按序对齐到尚未使用的本服非共享 CAB；
+        /// - 比官方多出来、找不到对应槽的 CAB 保留原名（如 Timeline 增轨的包内引用，不强行改共享）。
+        /// </summary>
+        private static void FillCrossServerCabMap(
+            List<string> modCabs,
+            List<string> localCabs,
+            string? sharedCab,
+            Dictionary<string, string> siblingCabToFile,
+            Dictionary<string, string> map)
+        {
+            var localSet = new HashSet<string>(localCabs, StringComparer.OrdinalIgnoreCase);
+            var modSet = new HashSet<string>(modCabs, StringComparer.OrdinalIgnoreCase);
+
+            var foreign = new List<string>();
+            foreach (string mc in modCabs)
+            {
+                if (!localSet.Contains(mc))
+                    foreign.Add(mc);
+            }
+
+            var unusedLocal = new List<string>();
+            foreach (string lc in localCabs)
+            {
+                if (!modSet.Contains(lc))
+                    unusedLocal.Add(lc);
+            }
+
+            var unusedNonShared = new List<string>();
+            bool sharedMissing = false;
+            foreach (string lc in unusedLocal)
+            {
+                if (!string.IsNullOrEmpty(sharedCab) && lc.Equals(sharedCab, StringComparison.OrdinalIgnoreCase))
+                {
+                    sharedMissing = true;
+                    continue;
+                }
+                unusedNonShared.Add(lc);
+            }
+            if (!string.IsNullOrEmpty(sharedCab) && !modSet.Contains(sharedCab) && !sharedMissing)
+                sharedMissing = true; // 本服有共享名但不在 localOrdered 时仍允许补齐
+
+            var scriptForeign = new List<string>();
+            var siblingForeign = new List<string>();
+            foreach (string fc in foreign)
+            {
+                if (siblingCabToFile.ContainsKey(fc))
+                    siblingForeign.Add(fc);
+                else
+                    scriptForeign.Add(fc);
+            }
+
+            int scriptIdx = 0;
+            // 缺共享脚本：只拿 1 个 foreign 补共享，其余多出来的保留
+            if (sharedMissing && !string.IsNullOrEmpty(sharedCab) && scriptForeign.Count > 0)
+            {
+                map[scriptForeign[0]] = sharedCab;
+                scriptIdx = 1;
+                Log.SuccessPartial($"共享脚本补齐 {ShortCab(scriptForeign[0])} -> {ShortCab(sharedCab)}");
+            }
+
+            // 其余无旁路 foreign：能对上官方未占用非共享槽的才改，对不上的保留
+            int nonSharedIdx = 0;
+            int kept = 0;
+            for (; scriptIdx < scriptForeign.Count; scriptIdx++)
+            {
+                if (nonSharedIdx < unusedNonShared.Count)
+                    map[scriptForeign[scriptIdx]] = unusedNonShared[nonSharedIdx++];
+                else
+                    kept++;
+            }
+
+            // 旁路 mod：按序对齐官方非共享槽；多出来的旁路引用保留（不强行改共享）
+            foreach (string sf in siblingForeign)
+            {
+                if (nonSharedIdx < unusedNonShared.Count)
+                    map[sf] = unusedNonShared[nonSharedIdx++];
+                else
+                    kept++;
+            }
+
+            if (siblingForeign.Count > 0)
+                Log.SuccessPartial($"旁路 CAB 对齐 siblingForeign={siblingForeign.Count}");
+            if (kept > 0)
+                Log.SuccessPartial($"比官方多出的 CAB 保留原名 x{kept}");
+        }
+
+        /// <summary>
+        /// 主包 Externals 未点名、但仍在同目录的旁路包（如拆出的 Walk）：
+        /// 将其自身 assets CAB 按序对齐到官方尚未占用的非共享 CAB，便于 catalog 依赖槽加载。
+        /// 优先配对「Externals 仍含本次 foreign/共享映射源」的旁路包，避免误改纯贴图包。
+        /// </summary>
+        private static void PairUnreferencedSiblingIdentities(
+            List<string> modCabs,
+            List<string> localCabs,
+            string? sharedCab,
+            Dictionary<string, string> siblingCabToFile,
+            Dictionary<string, string> map)
+        {
+            var modSet = new HashSet<string>(modCabs, StringComparer.OrdinalIgnoreCase);
+            var usedTargets = new HashSet<string>(map.Values, StringComparer.OrdinalIgnoreCase);
+
+            var unusedNonShared = new List<string>();
+            foreach (string lc in localCabs)
+            {
+                if (modSet.Contains(lc)) continue;
+                if (!string.IsNullOrEmpty(sharedCab) && lc.Equals(sharedCab, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (usedTargets.Contains(lc)) continue;
+                unusedNonShared.Add(lc);
+            }
+            if (unusedNonShared.Count == 0)
+                return;
+
+            var relatedKeys = new HashSet<string>(map.Keys, StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(sharedCab))
+                relatedKeys.Add(sharedCab);
+
+            var leftovers = new List<(string Cab, string File, int Score)>();
+            foreach (var kv in siblingCabToFile)
+            {
+                if (modSet.Contains(kv.Key)) continue;      // 已是主包 External
+                if (map.ContainsKey(kv.Key)) continue;       // 已映射
+                int score = 0;
+                if (BundleContainsAnyCab(kv.Value, relatedKeys))
+                    score += 100;
+                if (BundleLooksLikeAnimationPack(kv.Value))
+                    score += 50;
+                if (score <= 0)
+                    continue; // 跳过无关联的纯资源包
+                leftovers.Add((kv.Key, kv.Value, score));
+            }
+
+            leftovers.Sort((a, b) =>
+            {
+                int c = b.Score.CompareTo(a.Score);
+                return c != 0 ? c : string.Compare(a.File, b.File, StringComparison.OrdinalIgnoreCase);
+            });
+
+            int si = 0;
+            foreach (var item in leftovers)
+            {
+                if (si >= unusedNonShared.Count) break;
+                map[item.Cab] = unusedNonShared[si++];
+                Log.SuccessPartial($"旁路包身份 {ShortCab(item.Cab)} -> {ShortCab(map[item.Cab])} ({Path.GetFileName(item.File)})");
+            }
+        }
+
+        private static bool BundleLooksLikeAnimationPack(string bundlePath)
+        {
+            AssetsManager? am = null;
+            try
+            {
+                am = new AssetsManager();
+                var bun = am.LoadBundleFile(bundlePath);
+                for (int i = 0; i < bun.file.BlockAndDirInfo.DirectoryInfos.Count; i++)
+                {
+                    if (!bun.file.IsAssetsFile(i)) continue;
+                    var asset = am.LoadAssetsFileFromBundle(bun, i);
+                    if (asset == null) continue;
+                    if (asset.file.GetAssetsOfType(AssetClassID.AnimationClip).Any())
+                        return true;
+                }
+            }
+            catch { }
+            finally
+            {
+                try { am?.UnloadAll(); } catch { }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 索引同目录其它 Bundle：assets 文件 CAB 名 → 磁盘路径（被主包 External 指向的旁路包）。
+        /// </summary>
+        private static Dictionary<string, string> IndexSiblingCabFiles(string? modDir, string excludeBundle)
+        {
+            var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(modDir) || !Directory.Exists(modDir))
+                return index;
+
+            foreach (string f in EnumerateModBundleFiles(modDir))
+            {
+                if (f.Equals(excludeBundle, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                foreach (string cab in CollectAssetsFileCabNames(f))
+                {
+                    if (!index.ContainsKey(cab))
+                        index[cab] = f;
+                }
+            }
+            return index;
+        }
+
+        private static IEnumerable<string> EnumerateModBundleFiles(string modDir)
+        {
+            foreach (string f in Directory.GetFiles(modDir))
+            {
+                string name = Path.GetFileName(f);
+                if (name.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (name.Equals("__data", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("__data.bundle", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("__data", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 接受 __data / *.bundle / "__data (2).bundle" 等
+                    if (name.Equals("__data", StringComparison.OrdinalIgnoreCase)
+                        || name.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+                        yield return f;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 收集 Bundle 内 assets 文件自身的 CAB 名（DirectoryInfo），不含 Externals。
+        /// </summary>
+        private static List<string> CollectAssetsFileCabNames(string bundlePath)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(bundlePath) || !File.Exists(bundlePath))
+                return result;
+            AssetsManager? am = null;
+            try
+            {
+                am = new AssetsManager();
+                var bun = am.LoadBundleFile(bundlePath);
+                for (int i = 0; i < bun.file.BlockAndDirInfo.DirectoryInfos.Count; i++)
+                {
+                    if (!bun.file.IsAssetsFile(i)) continue;
+                    string name = bun.file.BlockAndDirInfo.DirectoryInfos[i].Name ?? "";
+                    var m = MonoScriptCabNameRegex.Match(name);
+                    if (m.Success && seen.Add(m.Value))
+                        result.Add(m.Value);
+                }
+            }
+            catch { }
+            finally
+            {
+                try { am?.UnloadAll(); } catch { }
+            }
+            return result;
+        }
+
+        private static bool BundleContainsAnyCab(string bundlePath, IEnumerable<string> cabs)
+        {
+            try
+            {
+                byte[] data = File.ReadAllBytes(bundlePath);
+                string ascii = Encoding.ASCII.GetString(data);
+                foreach (string cab in cabs)
+                {
+                    if (!string.IsNullOrEmpty(cab) && ascii.IndexOf(cab, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// 从 Reference 的全部依赖 Bundle 中按依赖顺序收集 MonoScript CAB（去重保序）。
+        /// </summary>
+        private List<string> CollectMonoScriptCabsFromReferenceDeps(ContentCatalogData ccd, ResourceLocation reference)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var deps = ListReferenceBundleDependencies(ccd, reference);
+            if (deps == null)
+                return result;
+
+            foreach (var dep in deps)
+            {
+                string path = ResolveDependencyBundleFilePath(dep);
+                foreach (string cab in CollectMonoScriptCabsOrdered(path))
+                {
+                    if (seen.Add(cab))
+                        result.Add(cab);
+                }
+            }
+            return result;
         }
 
         /// <summary>
@@ -799,6 +1275,56 @@ namespace ResourceModLoader.Module
         }
 
         /// <summary>
+        /// 按 Externals 出现顺序收集 Bundle 内全部 CAB 名（去重保序）。
+        /// 方法名保留历史叫法；实际包含脚本/资源等所有 External CAB，不只 MonoScript。
+        /// 读取后必须 <c>UnloadAll</c>，否则后续写回同一文件会触发文件占用。
+        /// </summary>
+        private static List<string> CollectMonoScriptCabsOrdered(string bundlePath)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(bundlePath) || !File.Exists(bundlePath))
+                return result;
+
+            AssetsManager? am = null;
+            try
+            {
+                am = new AssetsManager();
+                var bun = am.LoadBundleFile(bundlePath);
+                for (int i = 0; i < bun.file.BlockAndDirInfo.DirectoryInfos.Count; i++)
+                {
+                    if (!bun.file.IsAssetsFile(i)) continue;
+                    var asset = am.LoadAssetsFileFromBundle(bun, i);
+                    if (asset == null) continue;
+                    foreach (var e in asset.file.Metadata.Externals)
+                    {
+                        var m = MonoScriptCabNameRegex.Match(e.PathName ?? "");
+                        if (m.Success && seen.Add(m.Value))
+                            result.Add(m.Value);
+                    }
+                }
+            }
+            catch
+            {
+                try
+                {
+                    foreach (Match m in MonoScriptCabNameRegex.Matches(Encoding.ASCII.GetString(File.ReadAllBytes(bundlePath))))
+                    {
+                        if (seen.Add(m.Value))
+                            result.Add(m.Value);
+                    }
+                }
+                catch { }
+            }
+            finally
+            {
+                try { am?.UnloadAll(); } catch { }
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// 在单个 Bundle 中查找 MonoScript CAB 名：遍历全部 assets 的 Externals，
         /// 命中第一个即返回（不收集全集）；AssetsTools 失败时再在整文件字节里搜明文。
         /// </summary>
@@ -806,9 +1332,10 @@ namespace ResourceModLoader.Module
         /// <returns>形如 CAB-xxxxxxxx… 的字符串；未找到则 null。</returns>
         private static string? TryFindMonoScriptCabInBundle(string bundlePath)
         {
+            AssetsManager? am = null;
             try
             {
-                var am = new AssetsManager();
+                am = new AssetsManager();
                 var bun = am.LoadBundleFile(bundlePath);
                 for (int i = 0; i < bun.file.BlockAndDirInfo.DirectoryInfos.Count; i++)
                 {
@@ -826,6 +1353,10 @@ namespace ResourceModLoader.Module
             {
                 // AssetsTools 失败时：整文件字节里搜第一个 CAB- 明文
             }
+            finally
+            {
+                try { am?.UnloadAll(); } catch { }
+            }
 
             try
             {
@@ -839,32 +1370,51 @@ namespace ResourceModLoader.Module
         }
 
         /// <summary>
-        /// 将 Bundle 内所有与 targetCab 不同的 MonoScript CAB 名原地替换为目标值。
-        /// 仅处理等长 CAB（保持文件长度不变）；已与目标相同的跳过。
+        /// 按映射表等长替换 Bundle 内 CAB 明文。
         /// </summary>
-        /// <param name="bundlePath">要改写的 mod Bundle。</param>
-        /// <param name="targetCab">本服目标 CAB。</param>
-        /// <returns>成功替换的次数；无改动则 0（且不写盘）。</returns>
-        private static int ReplaceAllForeignMonoScriptCabsInBundle(string bundlePath, string targetCab)
+        /// <remarks>
+        /// 读：FileShare.ReadWrite；写：先写 <c>.cabremap.tmp</c> 再覆盖，失败短重试并 GC，
+        /// 避免对齐阶段 AssetsTools 句柄未释放导致 IOException。
+        /// </remarks>
+        /// <returns>替换命中次数；无改动则 0（不写盘）。</returns>
+        private static int ReplaceMonoScriptCabsByMap(string bundlePath, Dictionary<string, string> map)
         {
-            byte[] target = Encoding.ASCII.GetBytes(targetCab);
-            byte[] data = File.ReadAllBytes(bundlePath);
-            string latin = Encoding.ASCII.GetString(data);
-            var matches = MonoScriptCabNameRegex.Matches(latin);
-            if (matches.Count == 0) return 0;
+            if (map == null || map.Count == 0 || !File.Exists(bundlePath))
+                return 0;
 
-            var replaceFrom = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (Match m in matches)
+            byte[] data;
+            using (var fs = new FileStream(bundlePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             {
-                if (!m.Value.Equals(targetCab, StringComparison.OrdinalIgnoreCase))
-                    replaceFrom.Add(m.Value);
+                data = new byte[fs.Length];
+                int offset = 0;
+                while (offset < data.Length)
+                {
+                    int n = fs.Read(data, offset, data.Length - offset);
+                    if (n <= 0) break;
+                    offset += n;
+                }
+                if (offset != data.Length)
+                    data = data.AsSpan(0, offset).ToArray();
             }
 
             int hits = 0;
-            foreach (var from in replaceFrom)
+            foreach (var kv in map)
             {
+                string from = kv.Key;
+                string to = kv.Value;
+                if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
+                    continue;
+                if (from.Equals(to, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 byte[] src = Encoding.ASCII.GetBytes(from);
-                if (src.Length != target.Length) continue;
+                byte[] target = Encoding.ASCII.GetBytes(to);
+                if (src.Length != target.Length)
+                {
+                    Log.Warn($"跳过不等长 CAB 替换: {from} -> {to}");
+                    continue;
+                }
+
                 for (int i = 0; i <= data.Length - src.Length; i++)
                 {
                     bool ok = true;
@@ -879,9 +1429,32 @@ namespace ResourceModLoader.Module
                 }
             }
 
-            if (hits > 0)
-                File.WriteAllBytes(bundlePath, data);
-            return hits;
+            if (hits <= 0)
+                return 0;
+
+            string tmp = bundlePath + ".cabremap.tmp";
+            File.WriteAllBytes(tmp, data);
+
+            Exception? last = null;
+            for (int attempt = 0; attempt < 15; attempt++)
+            {
+                try
+                {
+                    File.Copy(tmp, bundlePath, overwrite: true);
+                    try { File.Delete(tmp); } catch { }
+                    return hits;
+                }
+                catch (IOException ex)
+                {
+                    last = ex;
+                    System.Threading.Thread.Sleep(40 * (attempt + 1));
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                }
+            }
+
+            try { File.Delete(tmp); } catch { }
+            throw new IOException($"无法写回 CAB 重映射: {bundlePath}", last);
         }
     }
 }
