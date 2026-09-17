@@ -85,9 +85,16 @@ namespace ResourceModLoader
             ReinitAddressableMgr(version);
         }
 
+        /// <summary>
+        /// 重新初始化 AddressableMgr：加载 catalog，并注入 GameDataDir / CacheDir
+        /// 供跨服 Add 时解析本机 Bundle 路径与 MonoScript CAB。
+        /// </summary>
         public void ReinitAddressableMgr(string version)
         {
             addressableMgr = new AddressableMgr();
+            // *_Data：解析 RuntimePath；AssetBundles：解析下载缓存里的 __data
+            addressableMgr.GameDataDir = Path.Combine(basePath, appName + "_Data");
+            addressableMgr.CacheDir = Path.Combine(presistDir, "AssetBundles");
             try
             {
                 addressableMgr.Add(Path.Combine(presistDir, "catalog_" + version + ".json"));
