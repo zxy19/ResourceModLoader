@@ -83,8 +83,8 @@ namespace ResourceModLoader.Module
                     {
                         Log.StepProgress(abro.BundleName,0);
                         string targetURL = catalogBase + rl.InternalId.Replace("{App.WebServerConfig.Path}", "");
-                        string targetInfo = Path.Combine(mod.presistDir, "AssetBundles", abro.BundleName, abro.Hash, "__info");
-                        string targetPath = Path.Combine(mod.presistDir, "AssetBundles", abro.BundleName, abro.Hash, "__data");
+                        string targetInfo = Path.Combine(mod.bundleCacheDir, abro.BundleName, abro.Hash, "__info");
+                        string targetPath = Path.Combine(mod.bundleCacheDir, abro.BundleName, abro.Hash, "__data");
 
                         if(!File.Exists(targetInfo) || !File.Exists(targetPath))
                         {

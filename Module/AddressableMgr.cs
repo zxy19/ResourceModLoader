@@ -32,7 +32,7 @@ namespace ResourceModLoader.Module
 
         /// <summary>游戏 *_Data 目录，用于解析官方 AB 的 RuntimePath。</summary>
         public string? GameDataDir { get; set; }
-        /// <summary>LocalLow AssetBundles 缓存目录。</summary>
+        /// <summary>游戏本体 *_Data/com.unity.addressables/AssetBundles 远程包缓存。</summary>
         public string? CacheDir { get; set; }
 
         public List<Tuple<string, string, string>> GetBundleRedirects()
@@ -1239,7 +1239,7 @@ namespace ResourceModLoader.Module
 
         /// <summary>
         /// 把 catalog 依赖的 InternalId 解析为磁盘上的 Bundle 文件路径。
-        /// 支持绝对路径、RuntimePath 占位符、以及 LocalLow AssetBundles 缓存布局。
+        /// 支持绝对路径、RuntimePath 占位符，以及游戏目录下 AssetBundles 缓存布局。
         /// </summary>
         /// <returns>可读文件路径；无法解析时返回空串或未展开的 InternalId。</returns>
         private string ResolveDependencyBundleFilePath(ResourceLocation dep)

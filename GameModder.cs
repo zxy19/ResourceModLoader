@@ -21,6 +21,8 @@ namespace ResourceModLoader
         public readonly string localPath = "";
         public readonly string modPath = "";
         public readonly string presistDir = "";
+        /// <summary>远程 bundle 缓存：游戏本体 *_Data/com.unity.addressables/AssetBundles（国服/外服同一相对位置）。</summary>
+        public readonly string bundleCacheDir = "";
         public BundleScan scan;
         public AddressableMgr addressableMgr;
         public ModContext modContext;
@@ -68,6 +70,7 @@ namespace ResourceModLoader
             }
             Log.Debug($"{appData[0]} / {appData[1]} ");
             presistDir = Path.Combine(localPath, appData[0], appData[1], "com.unity.addressables");
+            bundleCacheDir = Path.Combine(baseDir, appName + "_Data", "com.unity.addressables", "AssetBundles");
 
 
             string addressableSettings = File.ReadAllText(Path.Combine(baseDir, appName + "_Data", "StreamingAssets", "aa", "settings.json"));
@@ -92,9 +95,9 @@ namespace ResourceModLoader
         public void ReinitAddressableMgr(string version)
         {
             addressableMgr = new AddressableMgr();
-            // *_Data：解析 RuntimePath；AssetBundles：解析下载缓存里的 __data
+            // *_Data：解析 RuntimePath；远程 bundle 缓存在游戏本体目录
             addressableMgr.GameDataDir = Path.Combine(basePath, appName + "_Data");
-            addressableMgr.CacheDir = Path.Combine(presistDir, "AssetBundles");
+            addressableMgr.CacheDir = bundleCacheDir;
             try
             {
                 addressableMgr.Add(Path.Combine(presistDir, "catalog_" + version + ".json"));
@@ -124,7 +127,7 @@ namespace ResourceModLoader
             }
 
             modRecord = new ModRecords(this);
-            scan = new BundleScan(addressableMgr,modRecord, Path.Combine(basePath, appName + "_Data"), Path.Combine(presistDir, "AssetBundles"));
+            scan = new BundleScan(addressableMgr,modRecord, Path.Combine(basePath, appName + "_Data"), bundleCacheDir);
             modContext = new ModContext(addressableMgr, scan, modRecord,this.isDebugMode);
         }
 
